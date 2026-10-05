@@ -8,7 +8,9 @@ A practice web app for hockey parents learning to run the Trans-Lux Fair-Play MP
 - **Free play**: a mid-game board to experiment on, with an "explain keys" mode
 - **Cheat sheet**: every common task as a key sequence, plus what the console screen messages mean
 
-Live version: https://claude.ai/artifact/8j21QRvwECDfJV5tskGBGu
+**Use it:** https://tinker-tanker.github.io/scorebox-trainer/
+
+Also published as a Claude artifact: https://claude.ai/artifact/8j21QRvwECDfJV5tskGBGu
 
 ## Files
 
@@ -16,7 +18,11 @@ Live version: https://claude.ai/artifact/8j21QRvwECDfJV5tskGBGu
 - `scorebox/engine.js`: console emulator (keys, clock, penalties, LCD and scoreboard output). Runs in the browser or in Node.
 - `scorebox/app.js`: lessons, drills, the on-screen console and scoreboard, sound, cheat sheet
 
-`index.html` is written as an Artifact page body: it has no `<!doctype>`, `<html>` or `<head>` wrapper because the publisher adds them. To host it elsewhere, wrap it in a standard HTML document.
+`index.html` is written as an Artifact page body: it has no `<!doctype>`, `<html>` or `<head>` wrapper because the publisher adds them. `build.js` wraps it in a full HTML document and writes a standalone site to `_site/`.
+
+## Deploying
+
+Every push to `main` runs `.github/workflows/pages.yml`, which runs `node build.js` and publishes `_site/` to GitHub Pages. To preview locally, run `node build.js` and serve the `_site` folder with any static file server.
 
 ## Source and accuracy
 
