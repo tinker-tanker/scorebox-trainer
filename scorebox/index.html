@@ -490,7 +490,9 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
 .sheet-card td { padding: 12px 0; border-top: 1px solid var(--rule); vertical-align: top; }
 .sheet-card tr:first-child td { border-top: 0; }
 .sheet-card td:first-child { padding-right: 14px; width: 42%; font-weight: 600; }
-.seq { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+/* inline, so text and punctuation after a key group stay on the same line */
+.seq { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; vertical-align: middle; max-width: 100%; }
+.routine li .seq { margin-block: 1px; }
 .sheet-note { font-size: 13px; color: var(--muted); }
 /* screen messages drawn like the console display: green LCD in a dark bezel */
 .lcdchip { display: inline-block; font-family: var(--f-lcd); font-size: 19px; line-height: 1; letter-spacing: .02em; white-space: pre; color: var(--lcd-ink); background: var(--lcd-bg); padding: 5px 8px 4px; border-radius: 3px; box-shadow: 0 0 0 4px #111, inset 0 0 6px rgba(0,0,0,.3); margin: 4px; }
