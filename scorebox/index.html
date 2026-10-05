@@ -450,6 +450,15 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
 @keyframes chipscroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .lcdchip.scroll span, .ledchip.scroll span, .nvk[data-hint], .nv-power[data-hint], .nv-hornbtn[data-hint] { animation: none; } }
 
+/* ---------- small-screen notice ---------- */
+.small-notice { position: fixed; inset: 0; z-index: 50; display: grid; place-items: end center; background: rgba(18, 20, 28, .45); padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)); }
+.small-notice-box { width: min(100%, 440px); background: var(--background); border: 1px solid var(--grid); padding: 26px 24px 24px; display: grid; gap: 14px; }
+.small-notice-box h2 { font-size: 22px; }
+.small-notice-box p { font-size: 14px; color: var(--muted); }
+.small-notice-box .row { gap: 12px 22px; margin-top: 4px; }
+@media (prefers-reduced-motion: no-preference) { .small-notice-box { animation: notice-in .25s ease-out; } }
+@keyframes notice-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+
 /* ---------- cheat sheet: wiki tables, no cards ---------- */
 .sheet { display: grid; gap: 40px; }
 .sheet-head { display: grid; gap: 10px; max-width: 760px; }
@@ -584,6 +593,18 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
     <span>Tracking your team's stats? <a href="https://kiwistats.com" target="_blank" rel="noopener">Try KiwiStats</a></span>
   </div>
 </footer>
+
+<div class="small-notice" id="small-notice" role="dialog" aria-modal="true" aria-labelledby="small-notice-title" hidden>
+  <div class="small-notice-box">
+    <div class="eyebrow">Heads up</div>
+    <h2 id="small-notice-title">Best on a <span class="hl">computer</span></h2>
+    <p>The practice console has a lot of small keys, so lessons and drills are easier on a laptop, desktop or tablet. You can still look around here, and the cheat sheet works well on a phone at the rink.</p>
+    <div class="row">
+      <button type="button" class="btn primary" id="small-notice-ok">Continue on my phone</button>
+      <a class="btn" href="#cheat" id="small-notice-cheat">Open the cheat sheet</a>
+    </div>
+  </div>
+</div>
 
 <script src="engine.js"></script>
 <script src="nevco-engine.js"></script>

@@ -726,6 +726,17 @@
     }
   }
 
+  /* ---------- small screens: suggest a computer, once per device ---------- */
+  var notice = $('#small-notice');
+  function closeNotice() { notice.hidden = true; save('smallNoticeSeen', true); }
+  if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches && !load('smallNoticeSeen', false)) {
+    notice.hidden = false;
+    setTimeout(function () { $('#small-notice-ok').focus(); }, 0);
+  }
+  $('#small-notice-ok').addEventListener('click', closeNotice);
+  $('#small-notice-cheat').addEventListener('click', closeNotice);
+  notice.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNotice(); });
+
   setConsole(consoleId);
   renderStart();
   go(location.hash.slice(1) || 'start');
