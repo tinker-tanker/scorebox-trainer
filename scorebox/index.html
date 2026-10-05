@@ -387,9 +387,6 @@ kbd.k.switch { background: #1b1c1f; color: #fff; }
 .pick.soon:hover { background: none; }
 .pick.soon .pick-state { text-decoration: none; color: var(--muted-2); }
 @media (max-width: 760px) { .picker { grid-template-columns: minmax(0, 1fr); } .pick { padding: 22px 20px; } }
-.console-link { font-size: 12px; font-weight: 700; color: var(--foreground); text-decoration: underline; text-decoration-color: var(--rule-strong); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
-.console-link::before { content: "Console: "; font-weight: 600; color: var(--muted); }
-.console-link:hover { text-decoration-color: var(--foreground); }
 
 /* ---------- Nevco MPC control (a light grey unit, red LED display, overlay on two keypads) ---------- */
 .console.console-nevco { background: none; padding: 0; border-radius: 0; }
@@ -507,7 +504,7 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
 
 <header class="top">
   <div class="wrap">
-    <div class="brand"><b>Scorebox Trainer</b><a class="console-link" href="#console" data-console-name>Fair-Play MP-70</a><a class="byline" href="https://kiwistats.com" target="_blank" rel="noopener"><span class="kmark" aria-hidden="true">K</span>by KiwiStats</a></div>
+    <div class="brand"><b>Scorebox Trainer</b><a class="byline" href="https://kiwistats.com" target="_blank" rel="noopener"><span class="kmark" aria-hidden="true">K</span>by KiwiStats</a></div>
     <nav class="tabs" aria-label="Sections">
       <a href="#start" data-tab="start">Start here</a>
       <a href="#lessons" data-tab="lessons">Lessons</a>

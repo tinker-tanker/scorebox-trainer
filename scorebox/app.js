@@ -617,7 +617,7 @@
     }
     $('#sheet').innerHTML =
       '<div class="sheet-head"><div class="eyebrow">Keep this open in the scorer\'s box</div><h1>Cheat sheet: ' + META.name + '</h1>' +
-      '<p class="muted">' + sh.intro + ' Take a screenshot to keep it on your phone. <a href="#console">Different console?</a></p></div>' +
+      '<p class="muted">' + sh.intro + ' Take a screenshot to keep it on your phone.</p></div>' +
       '<div class="sheet-grid boxgrid">' +
       sh.cards.map(function (c) { return '<div class="sheet-card"><h2>' + c.title + '</h2>' + rows(c.rows) + '</div>'; }).join('') +
       '<div class="sheet-card"><h2>Screen messages</h2><p class="sheet-note">' + sh.screen.note + '</p><table class="lcd-table">' +
