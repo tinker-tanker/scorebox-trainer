@@ -720,42 +720,48 @@
     nowbar.innerHTML = h + '<span class="nowcoach"></span>';
   }
 
+  // Sidebars are one bordered box, like the home page grid: each direct child of .card is a
+  // cell or an edge-to-edge list, and every rule between them runs to the outer border.
+  function coachCell() {
+    return '<div class="pcell coachcell"><p class="tip warn coach" id="coach">' + (sim.coach || '') + '</p></div>';
+  }
+
   function lessonPanel() {
     if (!lesson) {
       var count = LESSONS.filter(function (l) { return doneLessons[l.id]; }).length;
-      return '<div class="card"><div class="eyebrow">Lessons</div><h2>Learn one job at a time</h2>' +
-        '<p class="muted">Each lesson sets up a game situation and walks you through it. The keys to press are outlined in coral on the console, numbered in order. ' + count + ' of ' + LESSONS.length + ' done.</p>' +
+      return '<div class="card"><div class="pcell"><div class="eyebrow">Lessons</div><h2>Learn one job at a time</h2>' +
+        '<p class="muted">Each lesson sets up a game situation and walks you through it. The keys to press are outlined in coral on the console, numbered in order. ' + count + ' of ' + LESSONS.length + ' done.</p></div>' +
         '<ol class="lesson-list">' + LESSONS.map(function (l, i) {
           return '<li><button type="button" data-open="' + i + '" class="' + (doneLessons[l.id] ? 'done' : '') + '"><span class="n">' + (doneLessons[l.id] ? '&#10003;' : i + 1) + '</span><span class="t">' + l.title + '<small>' + l.sub + '</small></span><span class="badge">' + l.steps.length + ' steps</span></button></li>';
         }).join('') + '</ol></div>';
     }
     var d = lesson.def, steps = d.steps;
-    var html = '<div class="card"><div class="row" style="justify-content:space-between"><span class="eyebrow">Lesson ' + (lesson.i + 1) + ' of ' + LESSONS.length + '</span>' +
+    var html = '<div class="card"><div class="pcell"><div class="row" style="justify-content:space-between"><span class="eyebrow">Lesson ' + (lesson.i + 1) + ' of ' + LESSONS.length + '</span>' +
       '<label class="toggle" for="hint-toggle"><input type="checkbox" id="hint-toggle"' + (showHints ? ' checked' : '') + '> Light up keys</label></div>' +
-      '<h2>' + d.title + '</h2><p>' + val(d.intro) + '</p>' +
+      '<h2>' + d.title + '</h2><p>' + val(d.intro) + '</p></div>' +
       '<ol class="steps">' + steps.map(function (st, i) {
         var cls = i < lesson.step || (i === lesson.step && (lesson.passing || lesson.finished)) ? 'done' : i === lesson.step ? 'current' : 'upcoming';
         var keys = val(st.keys);
         return '<li class="' + cls + '"><div>' + val(st.t) + (keys.length ? '<div class="keys">' + chips(keys) + '</div>' : '') + '</div></li>';
       }).join('') + '</ol>' +
-      '<p class="tip warn coach" id="coach">' + (sim.coach || '') + '</p>';
+      coachCell();
     if (lesson.finished) {
       var next = lesson.i + 1 < LESSONS.length;
-      html += '<div class="done-box"><b>Lesson done</b><p>' + val(d.wrap) + '</p><div class="row">' +
+      html += '<div class="pcell done-box"><b>Lesson done</b><p>' + val(d.wrap) + '</p><div class="row">' +
         (next ? '<button type="button" class="btn primary" data-open="' + (lesson.i + 1) + '">Next: ' + LESSONS[lesson.i + 1].title + '</button>' : '<a class="btn primary" href="#drills">Try a practice drill</a>') +
         '</div></div>';
     }
-    html += '<div class="row"><button type="button" class="btn small" data-act="lessons">All lessons</button><button type="button" class="btn small" data-open="' + lesson.i + '">Restart lesson</button></div></div>';
+    html += '<div class="pcell actions"><div class="row"><button type="button" class="btn small" data-act="lessons">All lessons</button><button type="button" class="btn small" data-open="' + lesson.i + '">Restart lesson</button></div></div></div>';
     return html;
   }
 
   function drillPanel() {
     if (!drill) {
-      return '<div class="card"><div class="eyebrow">Practice</div><h2>Run a fake game</h2>' +
+      return '<div class="card"><div class="pcell"><div class="eyebrow">Practice</div><h2>Run a fake game</h2>' +
         '<p class="muted">Things happen on the ice and you react. Each task has a time limit. If you run out of time, the console shows you the keys and fixes the board so the game can go on.</p>' +
-        '<label class="toggle" for="dhint-toggle"><input type="checkbox" id="dhint-toggle"' + (drillHints ? ' checked' : '') + '> Light up the keys (easier)</label>' +
+        '<label class="toggle" for="dhint-toggle"><input type="checkbox" id="dhint-toggle"' + (drillHints ? ' checked' : '') + '> Light up the keys (easier)</label></div>' +
         '<div class="drill-list">' + DRILLS.map(function (d, i) { return '<button type="button" data-drill="' + i + '"><b>' + d.title + '</b><span>' + d.sub + '</span></button>'; }).join('') + '</div>' +
-        '<p class="fine">Turn the sound on to hear the whistle. Your rules: ' + fmt(cfg.periodLen) + ' periods, ' + minorStr() + ' minors. Change them on the Start here page.</p></div>';
+        '<div class="pcell"><p class="fine">Turn the sound on to hear the whistle. Your rules: ' + fmt(cfg.periodLen) + ' periods, ' + minorStr() + ' minors. Change them on the Start here page.</p></div></div>';
     }
     var d = drill.def, total = drill.events.length;
     if (drill.phase === 'done') {
@@ -764,25 +770,25 @@
       var avg = re.length ? re.reduce(function (a, r) { return a + r.ms; }, 0) / re.length / 1000 : 0;
       var lost = drill.results.filter(function (r) { return r.reaction; }).reduce(function (a, r) { return a + r.ms; }, 0) / 1000;
       var verdict = ok === total ? 'Clean game. You are ready for this part.' : ok >= total - 2 ? 'Close. Run it once more and it will stick.' : 'Do the matching lessons again, then come back.';
-      return '<div class="card"><div class="eyebrow">' + d.title + '</div><h2>Final buzzer</h2>' +
+      return '<div class="card"><div class="pcell"><div class="eyebrow">' + d.title + '</div><h2>Final buzzer</h2></div>' +
         '<div class="stats"><div><b>' + ok + '/' + total + '</b><span>done in time</span></div><div><b>' + (re.length ? avg.toFixed(2) + 's' : '-') + '</b><span>average reaction</span></div><div><b>' + lost.toFixed(1) + 's</b><span>clock error, total</span></div></div>' +
-        '<p>' + verdict + ' Under one second per whistle is a good target.</p>' +
+        '<div class="pcell"><p>' + verdict + ' Under one second per whistle is a good target.</p></div>' +
         resultsList() +
-        '<div class="row"><button type="button" class="btn primary" data-drill="' + DRILLS.indexOf(d) + '">Play again</button><button type="button" class="btn" data-act="drills">Other drills</button></div></div>';
+        '<div class="pcell actions"><div class="row"><button type="button" class="btn primary" data-drill="' + DRILLS.indexOf(d) + '">Play again</button><button type="button" class="btn" data-act="drills">Other drills</button></div></div></div>';
     }
     var e = drill.events[drill.idx];
     var cue = drill.phase === 'wait'
-      ? '<div class="cue waiting"><div class="what">' + (sim.timeIn ? 'Play on...' : 'Stoppage...') + '</div><div class="detail">Watch for the next call.</div></div>'
-      : '<div class="cue"><div class="what ' + e.cls + '">' + e.cue + '</div><div class="detail">' + e.detail + '</div><div class="timerbar"><i id="tbar"></i></div></div>';
+      ? '<div class="pcell cue waiting"><div class="what">' + (sim.timeIn ? 'Play on...' : 'Stoppage...') + '</div><div class="detail">Watch for the next call.</div></div>'
+      : '<div class="pcell cue"><div class="what ' + e.cls + '">' + e.cue + '</div><div class="detail">' + e.detail + '</div><div class="timerbar"><i id="tbar"></i></div></div>';
     var fb = '';
     if (drill.phase === 'feedback' && drill.last) {
       fb = drill.last.ok
-        ? '<div class="feedback good"><b>Got it</b> ' + (drill.last.e.reaction ? (drill.last.ms / 1000).toFixed(2) + ' seconds' : 'in ' + (drill.last.ms / 1000).toFixed(1) + ' seconds') + '</div>'
-        : '<div class="feedback miss"><b>Out of time.</b><span>The keys were: </span><span class="seq">' + chips(drill.last.e.keys.length ? drill.last.e.keys : []) + '</span><span>The board has been fixed so the game can continue.</span></div>';
+        ? '<div class="pcell feedback good"><b>Got it</b> ' + (drill.last.e.reaction ? (drill.last.ms / 1000).toFixed(2) + ' seconds' : 'in ' + (drill.last.ms / 1000).toFixed(1) + ' seconds') + '</div>'
+        : '<div class="pcell feedback miss"><b>Out of time.</b><span>The keys were: </span><span class="seq">' + chips(drill.last.e.keys.length ? drill.last.e.keys : []) + '</span><span>The board has been fixed so the game can continue.</span></div>';
     }
-    return '<div class="card"><div class="row" style="justify-content:space-between"><span class="eyebrow">' + d.title + '</span><span class="badge">' + Math.min(drill.idx + 1, total) + ' of ' + total + '</span></div>' +
-      cue + fb + '<p class="tip warn coach" id="coach">' + (sim.coach || '') + '</p>' + resultsList() +
-      '<div class="row"><button type="button" class="btn small" data-act="stopdrill">Stop drill</button></div></div>';
+    return '<div class="card"><div class="pcell"><div class="row" style="justify-content:space-between"><span class="eyebrow">' + d.title + '</span><span class="badge">' + Math.min(drill.idx + 1, total) + ' of ' + total + '</span></div></div>' +
+      cue + fb + coachCell() + resultsList() +
+      '<div class="pcell actions"><div class="row"><button type="button" class="btn small" data-act="stopdrill">Stop drill</button></div></div></div>';
   }
   function resultsList() {
     if (!drill || !drill.results.length) return '';
@@ -793,12 +799,12 @@
 
   function freePanel() {
     var info = explainKey && INFO[explainKey];
-    return '<div class="card"><div class="eyebrow">Free play</div><h2>Try anything</h2>' +
+    return '<div class="card"><div class="pcell"><div class="eyebrow">Free play</div><h2>Try anything</h2>' +
       '<p class="muted">No instructions, no timer. The board starts mid-game with a couple of penalties running. Press keys and see what happens.</p>' +
-      '<label class="toggle" for="explain-toggle"><input type="checkbox" id="explain-toggle"' + (explain ? ' checked' : '') + '> Explain keys instead of pressing them</label>' +
-      (explain ? '<div class="explain">' + (info ? '<h3>' + info[0] + '</h3><p>' + info[1] + '</p>' : '<p class="muted">Tap any key or switch on the console to see what it does.</p>') + '</div>' : '') +
-      '<p class="tip warn coach" id="coach">' + (sim.coach || '') + '</p>' +
-      '<div class="row"><button type="button" class="btn small" data-act="sample">Load sample game</button><button type="button" class="btn small" data-act="fresh">Fresh game</button></div></div>';
+      '<label class="toggle" for="explain-toggle"><input type="checkbox" id="explain-toggle"' + (explain ? ' checked' : '') + '> Explain keys instead of pressing them</label></div>' +
+      (explain ? '<div class="pcell explain">' + (info ? '<h3>' + info[0] + '</h3><p>' + info[1] + '</p>' : '<p class="muted">Tap any key or switch on the console to see what it does.</p>') + '</div>' : '') +
+      coachCell() +
+      '<div class="pcell actions"><div class="row"><button type="button" class="btn small" data-act="sample">Load sample game</button><button type="button" class="btn small" data-act="fresh">Fresh game</button></div></div></div>';
   }
 
   panel.addEventListener('click', function (e) {
