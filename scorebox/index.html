@@ -66,9 +66,9 @@ button { font: inherit; color: inherit; }
 .top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 32px; padding-block: 18px; }
 .brand { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
 .brand b { font-weight: 800; font-size: 15px; letter-spacing: -0.02em; }
-.byline { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-decoration: none; }
+.byline { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-decoration: none; }
 .byline:hover { color: var(--foreground); }
-.kmark { width: 18px; height: 18px; border-radius: 5px; background: var(--foreground); color: var(--accent); display: inline-grid; place-items: center; font-weight: 800; font-size: 11px; line-height: 1; }
+.kmark { width: 18px; height: 18px; border-radius: 5px; background: var(--foreground); color: var(--accent); display: inline-grid; place-items: center; align-self: center; font-weight: 800; font-size: 11px; line-height: 1; }
 nav.tabs { display: flex; gap: 4px 26px; flex-wrap: wrap; margin-left: auto; }
 nav.tabs a { position: relative; font-weight: 600; font-size: 13px; color: var(--muted); text-decoration: none; padding-block: 2px; }
 nav.tabs a:hover { color: var(--foreground); }
@@ -182,17 +182,16 @@ kbd.k.switch { background: #1b1c1f; color: #fff; }
 
 .lesson-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .lesson-list li { border-top: 1px solid var(--rule); }
-.lesson-list li:last-child { border-bottom: 1px solid var(--rule); }
-.lesson-list button { width: 100%; display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: baseline; text-align: left; background: none; border: 0; padding: 13px 0; cursor: pointer; }
+.lesson-list button { width: 100%; display: grid; grid-template-columns: 36px 1fr auto; gap: 16px; align-items: center; text-align: left; background: none; border: 0; padding: 22px 0; cursor: pointer; }
 .lesson-list button:hover .t { text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
-.lesson-list .n { font-weight: 700; font-size: 13px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+.lesson-list .n { font-weight: 800; font-size: 22px; letter-spacing: -0.04em; line-height: 1; color: var(--foreground); font-variant-numeric: tabular-nums; justify-self: start; }
 .lesson-list .t { font-weight: 700; font-size: 14px; line-height: 1.3; }
 .lesson-list .t small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; margin-top: 3px; }
-.lesson-list .done .n { color: var(--accent-ink); background: var(--hl); }
+.lesson-list .done .n { color: var(--accent-ink); background: var(--hl); padding-inline: .1em; }
 .badge { font-size: 12px; font-weight: 600; color: var(--muted-2); white-space: nowrap; }
 
 .steps { list-style: none; margin: 0; padding: 0; display: grid; counter-reset: st; }
-.steps li { counter-increment: st; display: grid; grid-template-columns: 24px 1fr; gap: 12px; padding-block: 14px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--muted-2); }
+.steps li { counter-increment: st; display: grid; grid-template-columns: 24px 1fr; gap: 14px; padding-block: 20px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--muted-2); }
 .steps li:first-child { border-top: 0; }
 .steps li::before { content: counter(st); font-weight: 800; font-size: 14px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
 .steps li.current { color: var(--foreground); }
@@ -210,8 +209,7 @@ kbd.k.switch { background: #1b1c1f; color: #fff; }
 
 /* drills */
 .drill-list { display: grid; }
-.drill-list button { text-align: left; display: grid; gap: 2px; background: none; border: 0; border-top: 1px solid var(--rule); padding: 16px 0; cursor: pointer; }
-.drill-list button:last-child { border-bottom: 1px solid var(--rule); }
+.drill-list button { text-align: left; display: grid; gap: 4px; background: none; border: 0; border-top: 1px solid var(--rule); padding: 24px 0; cursor: pointer; }
 .drill-list button:hover b { text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
 .drill-list b { font-weight: 800; font-size: 14px; }
 .drill-list span { font-size: 13px; color: var(--muted); }
@@ -226,8 +224,9 @@ kbd.k.switch { background: #1b1c1f; color: #fff; }
 .feedback { font-size: 14px; display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--rule); }
 .feedback.good b { justify-self: start; background: var(--hl); padding-inline: .08em; }
 .feedback.miss b { color: var(--danger-text); }
-.results { list-style: none; margin: 0; padding: 0; display: grid; font-size: 13px; max-height: 240px; overflow: auto; }
-.results li { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; padding-block: 4px; border-top: 1px solid var(--rule); }
+.results { list-style: none; margin: 0; padding: 0; display: grid; font-size: 13px; max-height: 300px; overflow: auto; }
+.results li { display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; padding-block: 10px; border-top: 1px solid var(--rule); }
+.results li:first-child { border-top: 0; }
 .results .ok { color: var(--accent-text); font-weight: 800; }
 .results .x { color: var(--danger-text); font-weight: 800; }
 .results .tm { font-variant-numeric: tabular-nums; color: var(--muted); }
