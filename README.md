@@ -8,7 +8,7 @@ A practice web app for hockey parents learning to run the Trans-Lux Fair-Play MP
 - **Free play**: a mid-game board to experiment on, with an "explain keys" mode
 - **Cheat sheet**: every common task as a key sequence, plus what the console screen messages mean
 
-**Use it:** https://tinker-tanker.github.io/scorebox-trainer/
+**Use it:** https://trainer.kiwistats.com
 
 Also published as a Claude artifact: https://claude.ai/artifact/8j21QRvwECDfJV5tskGBGu
 
@@ -22,7 +22,7 @@ Also published as a Claude artifact: https://claude.ai/artifact/8j21QRvwECDfJV5t
 
 ## Deploying
 
-Every push to `main` runs `.github/workflows/pages.yml`, which runs `node build.js` and publishes `_site/` to GitHub Pages. To preview locally, run `node build.js` and serve the `_site` folder with any static file server.
+Hosted on Vercel (project `scorebox-trainer`, domain `trainer.kiwistats.com`, next to the KiwiStats app). Every push to `main` deploys: Vercel runs `node build.js` and serves `_site/`, as set in `vercel.json`. To preview locally, run `node build.js` and serve the `_site` folder with any static file server.
 
 ## Source and accuracy
 
