@@ -1,8 +1,11 @@
-name: Deploy to GitHub Pages
+# The app is hosted on Vercel at trainer.kiwistats.com. GitHub Pages only serves a
+# forwarding page so old tinker-tanker.github.io/scorebox-trainer links keep working.
+name: GitHub Pages redirect
 
 on:
   push:
     branches: [main]
+    paths: [redirect/**, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -22,14 +25,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Build site
-        run: node build.js
+      - name: Prepare redirect site
+        run: |
+          mkdir -p _redirect
+          cp redirect/index.html _redirect/index.html
+          cp redirect/index.html _redirect/404.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: _redirect
       - id: deployment
         uses: actions/deploy-pages@v4
