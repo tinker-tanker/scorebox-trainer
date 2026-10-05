@@ -832,7 +832,7 @@
     $('#sheet').innerHTML =
       '<div class="sheet-head"><div class="eyebrow">Keep this open in the scorer\'s box</div><h1>Cheat sheet</h1>' +
       '<p class="muted">Your rules: ' + fmt(cfg.periodLen) + ' periods, ' + minorStr() + ' minors (' + KL[mk][0] + ' key), 5:00 majors (+2 key). Blue keys are home, yellow keys are visitor. "Shift +" means hold SHIFT, then press the key. Take a screenshot to keep it on your phone.</p></div>' +
-      '<div class="sheet-grid">' +
+      '<div class="sheet-grid boxgrid">' +
       '<div class="sheet-card"><h2>Every whistle</h2>' + rows([
         ['Puck drops', ['timein'], 'Switch ON. Clock runs.'],
         ['Whistle', ['timein'], 'Switch OFF. Clock stops.'],
