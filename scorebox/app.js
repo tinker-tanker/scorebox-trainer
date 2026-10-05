@@ -1,6 +1,7 @@
 (function () {
   'use strict';
-  var E = window.Engine, SEC = E.SEC;
+  var E = window.Engine, SEC = E.SEC, CONSOLES = window.Consoles;
+  var ORDER = ['fairplay', 'nevco'];
 
   /* ---------- storage (per-viewer conveniences only) ---------- */
   function load(k, d) { try { var v = localStorage.getItem('sbt.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
@@ -8,14 +9,17 @@
 
   var cfg = Object.assign(E.defaultSettings(), { periodLen: 900, minor: 90, tenths: true }, load('cfg', {}));
   cfg.pen3 = 90;
-  var sim = E.newGame(cfg);
+  var consoleId = CONSOLES[load('console', 'fairplay')] ? load('console', 'fairplay') : 'fairplay';
+  var META = CONSOLES[consoleId], CU = null;          // console metadata, and its built UI module
+  var sim = null;
   var tab = 'start';
   var explain = false;
   var showHints = load('hints', true);
   var drillHints = load('drillHints', false);
   var soundOn = load('sound', true);
-  var doneLessons = load('done', {});
-  var lesson = null, drill = null, freeLoaded = false, explainKey = null;
+  var doneLessons = {};
+  var LESSONS = [], DRILLS = [];
+  var lesson = null, drill = null, explainKey = null;
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function $(sel, root) { return (root || document).querySelector(sel); }
@@ -26,111 +30,45 @@
     while (out.length < n) { var p = rnd(2, 29); if (out.indexOf(p) < 0) out.push(p); }
     return out;
   }
-
-  /* ---------- rule helpers ---------- */
-  function minorKey() { return cfg.minor === cfg.pen3 ? 'plus3' : 'plus1'; }
   function minorStr() { return fmt(cfg.minor); }
-  function timeKeys(sec) {
-    var m = Math.floor(sec / 60), s = sec % 60;
-    return (String(m) + (s < 10 ? '0' : '') + s).split('').map(function (d) { return 'd' + d; });
-  }
   function numKeys(n) { return String(n).split('').map(function (d) { return 'd' + d; }); }
-  function spaced(n) { return String(n).split('').join(' '); }
-  function timeDigits(sec) { return timeKeys(sec).map(function (k) { return k.slice(1); }).join(' '); }
+  function val(x) { return typeof x === 'function' ? x() : x; }
+  function newGame() { return E.newGame(cfg, consoleId); }
+  function teamName(T) { return T === 'H' ? 'Home' : META.teams.V.charAt(0) + META.teams.V.slice(1).toLowerCase(); }
 
-  /* ---------- key labels ---------- */
-  var KL = {
-    settimer: ['Set Timer'], autohorn: ['Auto Horn'], clockset: ['Clock Set'], period: ['Period'],
-    htimeout: ['Home Timeout', 'blue'], vtimeout: ['Visitor Timeout', 'yellow'], minus1: ['-1'],
-    bridim: ['Bri. Dim'], hsog: ['Home S.O.G.', 'blue'], vsog: ['Visitor S.O.G.', 'yellow'], setint: ['Set Interval'],
-    hpen: ['Home Penalty', 'blue'], vpen: ['Visitor Penalty', 'yellow'], plus3: ['+3'], plus2: ['+2'], plus1: ['+1'],
-    hgoal: ['Home Goal', 'blue'], vgoal: ['Visitor Goal', 'yellow'], hscore: ['Home Score', 'blue'], vscore: ['Visitor Score', 'yellow'],
-    clr: ['CLR', 'white'], enter: ['Enter', 'white'], shift: ['Shift', 'green'], timein: ['Time In', 'switch'], horn: ['Horn', 'switch']
-  };
+  /* ---------- shared helpers handed to each console module ---------- */
+  function midGame(s, o) {
+    o = o || {};
+    s.period = o.period || 1;
+    s.clock = (o.clock != null ? o.clock : cfg.periodLen - 187) * SEC;
+    s.H.score = o.h || 0; s.V.score = o.v || 0;
+    s.H.sog = o.hs != null ? o.hs : 6; s.V.sog = o.vs != null ? o.vs : 4;
+    if (o.running) E.setTimeIn(s, true);
+  }
+  function inMode(s, kind, team) { return !!s.mode && s.mode.kind === kind && (!team || s.mode.team === team); }
+  function hasPen(s, T, p, total) { var x = E.findPen(s, T, p); return !!x && (total == null || x.total === total); }
+  function updateSwitch(s, root) {
+    var r = root.querySelector('[data-key="timein"]'), st = root.querySelector('#rstate');
+    r.classList.toggle('on', s.timeIn); r.setAttribute('aria-pressed', String(s.timeIn));
+    st.classList.toggle('on', s.timeIn);
+    st.textContent = s.power === false ? 'Control off' : s.timeIn ? (s.clock > 0 || !s.countDown ? 'Clock running' : 'On, at 0:00') : 'Clock stopped';
+  }
+  var ctx = { E: E, cfg: cfg, fmt: fmt, numKeys: numKeys, midGame: midGame, inMode: inMode, hasPen: hasPen, updateSwitch: updateSwitch };
+
+  /* ---------- key chips ---------- */
   function chip(k) {
-    if (/^d\d$/.test(k)) return '<kbd class="k white">' + k.slice(1) + '</kbd>';
-    var l = KL[k] || [k];
+    var l = CU.keyLabel(k);
     return '<kbd class="k ' + (l[1] || '') + '">' + l[0] + '</kbd>';
   }
   function chips(keys) { return keys.map(chip).join(''); }
   function seq(keys) { return '<span class="seq">' + keys.map(chip).join('') + '</span>'; }
 
-  /* ---------- explain text ---------- */
-  var INFO = {
-    timein: ['TIME IN switch', 'Starts and stops the game clock. Flip it on when the referee drops the puck, off at every whistle. Penalty clocks follow it automatically. Turning it off also silences the horn.'],
-    horn: ['HORN', 'Sounds the horn while you hold it. You rarely need it: with AUTO HORN on, the horn sounds by itself at the end of each period.'],
-    autohorn: ['AUTO HORN', 'Turns the automatic end-of-period horn on or off. The light next to the screen shows it is on. Leave it on.'],
-    clockset: ['CLOCK SET', 'Sets the game clock. Only works with TIME IN off. Press it, type the time without the colon (1300 for 13:00), press ENTER. Press it twice for the break clock, three times for overtime. With SHIFT it changes the clock to count up or down; you will not need that.'],
-    period: ['PERIOD', 'Changes the period number. Press PERIOD, then +1. With SHIFT it is NEW GAME, which clears scores, shots and penalties.'],
-    hscore: ['HOME SCORE', 'Changes the home score. Press it, then +1 for a goal (the goal light flashes by itself) or -1 to take one away. You can also type a number and press ENTER.'],
-    vscore: ['VISITOR SCORE', 'Same as HOME SCORE, for the visiting team.'],
-    hsog: ['HOME S.O.G.', 'Shots on goal for the home team. Press it, then +1. The clock does not need to stop.'],
-    vsog: ['VISITOR S.O.G.', 'Shots on goal for the visiting team.'],
-    hpen: ['HOME PENALTY', 'Enters a home penalty: HOME PENALTY, a time key (+1, +2 or +3), the player number, ENTER. To clear or change one: HOME PENALTY, player number, ENTER, then ENTER again (clear) or a new time and ENTER. With SHIFT it lists all home penalties.'],
-    vpen: ['VISITOR PENALTY', 'Same as HOME PENALTY, for the visiting team.'],
-    plus1: ['+1 (2:00)', 'Adds 1 to a score, shot count or period. In a penalty it enters 2:00.'],
-    plus2: ['+2 (5:00)', 'Adds 2. In a penalty it enters 5:00, a major.'],
-    plus3: ['+3 (01:30 sticker)', 'Adds 3. In a penalty it enters 1:30 on your rink\'s console. The manual says the factory setting is 10:00, so the sticker tells you someone changed it.'],
-    minus1: ['-1', 'Takes 1 away from a score, shot count or period. It also starts a timeout countdown. With SHIFT it is BLANK, which hides the last number you selected on the scoreboard.'],
-    hgoal: ['HOME GOAL', 'Only switches the red goal light on or off. It does NOT add a goal. Use HOME SCORE then +1 for goals.'],
-    vgoal: ['VISITOR GOAL', 'Only switches the visitor goal light. It does NOT add a goal.'],
-    htimeout: ['HOME TIMEOUT', 'With the clock stopped: press it, then -1 to start the timeout countdown and use one of the team\'s timeouts. T.O.L. means timeouts left.'],
-    vtimeout: ['VISITOR TIMEOUT', 'Same as HOME TIMEOUT, for the visiting team.'],
-    settimer: ['SET TIMER', 'Not used for hockey. With SHIFT it is T.O.D., which shows the time of day on the scoreboard instead of the game clock. Answer NO (SHIFT + 6) to bring the game clock back.'],
-    bridim: ['BRI. DIM', 'Brightness for outdoor scoreboards. It does nothing at an indoor rink.'],
-    setint: ['SET INTERVAL', 'An extra timer that sounds the horn every so often without stopping the game, used for line changes in some youth games. With SHIFT it turns the interval timer on or off. Only use it if your rink asks you to.'],
-    shift: ['SHIFT', 'Unlocks the green labels. On the real console, hold SHIFT down while pressing the other key. Here, tap SHIFT and then the key.'],
-    clr: ['CLR / ESC', 'CLR erases what you typed, before you press ENTER. With SHIFT it is ESC: it backs you out of whatever the screen is asking.'],
-    enter: ['ENTER', 'Saves what you typed. Once you press ENTER the value is on the scoreboard, so check the number first.'],
-    d4: ['4 / YES', 'A number key. With SHIFT it answers YES to a question on the screen.'],
-    d5: ['5 / NEXT', 'A number key. NEXT is only used in the setup menus.'],
-    d6: ['6 / NO', 'A number key. With SHIFT it answers NO to a question on the screen.'],
-    d8: ['8 / up arrow', 'A number key. The arrow is only used in the setup menus.'],
-    d2: ['2 / down arrow', 'A number key. The arrow is only used in the setup menus.']
-  };
-
   /* ---------- console ---------- */
-  var FN = [
-    ['settimer', 'Set<br>Timer', 'T.O.D.'], ['autohorn', 'Auto<br>Horn'], ['clockset', 'Clock<br>Set', 'Clk. Up/Dn'], ['period', 'Period', 'New Game'],
-    ['htimeout', 'Home<br>Timeout<br>T.O.L.', '', 'blue'], ['vtimeout', 'Visitor<br>Timeout<br>T.O.L.', '', 'yellow'], ['minus1', '-1', 'Blank'],
-    ['bridim', 'Bri.<br>Dim'], ['hsog', 'Home<br>S.O.G.', '', 'blue'], ['vsog', 'Visitor<br>S.O.G.', '', 'yellow'], ['setint', 'Set<br>Interval', 'On/Off'],
-    ['hpen', 'Home<br>Penalty', '', 'blue'], ['vpen', 'Visitor<br>Penalty', '', 'yellow'], ['plus3', '+3<span class="sticker" id="sticker3"></span>'],
-    [null], ['hgoal', 'Home<br>Goal', '', 'blue'], ['vgoal', 'Visitor<br>Goal', '', 'yellow'], [null], [null], [null], ['plus2', '+2<br>5:00'],
-    [null], [null], [null], [null], ['hscore', 'Home<br>Score', '', 'blue'], ['vscore', 'Visitor<br>Score', '', 'yellow'], ['plus1', '+1<br>2:00']
-  ];
-  var NUM = [
-    ['d7', '7'], ['d8', '8<span class="arrow">&#9650;</span>'], ['d9', '9'],
-    ['d4', '4', 'Yes'], ['d5', '5', 'Next'], ['d6', '6', 'No'],
-    ['d1', '1'], ['d2', '2<span class="arrow">&#9660;</span>'], ['d3', '3'],
-    ['clr', 'CLR', 'Esc'], ['d0', '0'], ['enter', 'Enter']
-  ];
-  function keyHTML(k, extraCls) {
-    if (!k[0]) return '<span class="key black" aria-hidden="true"></span>';
-    var sub = k[2] ? '<span class="sub">' + k[2] + '</span>' : '';
-    var label = (KL[k[0]] ? KL[k[0]][0] : k[0].slice(1)) + (k[2] ? ' (' + k[2] + ')' : '');
-    return '<button type="button" class="key ' + (k[3] || extraCls || '') + (sub ? ' has-sub' : '') + '" data-key="' + k[0] + '" aria-label="' + label + '"><span>' + k[1] + '</span>' + sub + '</button>';
-  }
-  var consoleEl = $('#console');
-  consoleEl.innerHTML =
-    '<div class="face">' +
-    '<div class="plate"><b>MP-70 &middot; HK</b><span>Practice console</span></div>' +
-    '<div class="lcdbox"><div class="lcd" id="lcd" role="status" aria-label="Console screen"></div></div>' +
-    '<div class="ledbox">AUTO HORN<span class="led" id="led"></span>ON</div>' +
-    '<div class="fn">' + FN.map(function (k) { return keyHTML(k); }).join('') + '</div>' +
-    '<div class="num">' + NUM.map(function (k) { return keyHTML(k, k[0] === 'enter' ? 'white enter' : 'white'); }).join('') +
-    '<button type="button" class="key shiftkey" data-key="shift" aria-label="Shift">Shift</button></div>' +
-    '<div class="side"><span class="mobile-led">AUTO HORN <span class="led" id="led2"></span></span>' +
-    '<span class="lbl">HORN</span><button type="button" class="hornbtn" data-key="horn" aria-label="Horn"></button>' +
-    '<span class="lbl">TIME IN</span><button type="button" class="rocker" data-key="timein" aria-label="Time in switch" aria-pressed="false"><i></i></button>' +
-    '<span class="rstate" id="rstate">Clock stopped</span></div>' +
-    '</div>';
-  var lcdEl = $('#lcd'), ledEl = $('#led'), led2El = $('#led2'), rockerEl = $('[data-key="timein"]', consoleEl),
-    rstateEl = $('#rstate'), shiftEl = $('[data-key="shift"]', consoleEl), hornEl = $('[data-key="horn"]', consoleEl);
-  $('#sticker3').textContent = ('0' + fmt(cfg.pen3)).slice(-5);
+  var consoleEl = $('#console'), lcdEl = null;
 
   function flash(key) {
     var el = $('[data-key="' + key + '"]', consoleEl);
-    if (!el || key === 'timein') return;
+    if (!el || key === 'timein' || key === 'power') return;
     el.classList.add('pressed');
     setTimeout(function () { el.classList.remove('pressed'); }, 110);
   }
@@ -138,8 +76,8 @@
   function doKey(key) {
     if (explain) { explainKey = key; renderPanel(); return; }
     audio();
-    if (key === 'timein') E.setTimeIn(sim, !sim.timeIn);
-    else if (key !== 'horn') E.press(sim, key);
+    if (key === 'timein') { if (sim.power !== false) E.setTimeIn(sim, !sim.timeIn); }
+    else E.press(sim, key);
     flash(key);
     checkLesson();
     render();
@@ -149,14 +87,23 @@
     var b = e.target.closest('[data-key]');
     if (!b || b.dataset.key === 'horn') return;
     doKey(b.dataset.key);
-    if (e.detail > 0) b.blur(); // keep space bar free for TIME IN after mouse clicks
+    if (e.detail > 0) b.blur(); // keep space bar free for the clock switch after mouse clicks
   });
-  function hornOn(e) { if (explain) { if (e.type === 'pointerdown') doKey('horn'); return; } audio(); E.hornDown(sim); hornEl.classList.add('held'); }
-  function hornOff() { E.hornUp(sim); hornEl.classList.remove('held'); }
-  hornEl.addEventListener('pointerdown', hornOn);
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (t) { hornEl.addEventListener(t, hornOff); });
-  hornEl.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); hornOn(e); } });
-  hornEl.addEventListener('keyup', hornOff);
+  // Horn buttons sound while held. On the Nevco, SET then HORN is a menu instead.
+  consoleEl.addEventListener('pointerdown', function (e) {
+    var b = e.target.closest('[data-key="horn"]');
+    if (!b) return;
+    if (explain || sim.set) { doKey('horn'); return; }
+    audio(); E.hornDown(sim); b.classList.add('held');
+  });
+  function hornRelease() { if (sim) E.hornUp(sim); consoleEl.querySelectorAll('[data-key="horn"].held').forEach(function (h) { h.classList.remove('held'); }); }
+  ['pointerup', 'pointercancel'].forEach(function (t) { document.addEventListener(t, hornRelease); });
+  consoleEl.addEventListener('pointerleave', hornRelease, true);
+  consoleEl.addEventListener('keydown', function (e) {
+    var b = e.target.closest && e.target.closest('[data-key="horn"]');
+    if (b && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); if (sim.set) doKey('horn'); else E.hornDown(sim); }
+  });
+  consoleEl.addEventListener('keyup', function (e) { if (e.target.closest && e.target.closest('[data-key="horn"]')) hornRelease(); });
 
   document.addEventListener('keydown', function (e) {
     if (['lessons', 'drills', 'free'].indexOf(tab) < 0 || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -165,8 +112,8 @@
     var k = null;
     if (e.key === ' ') k = 'timein';
     else if (/^[0-9]$/.test(e.key)) k = 'd' + e.key;
-    else if (e.key === 'Enter') k = 'enter';
-    else if (e.key === 'Backspace') k = 'clr';
+    else if (e.key === 'Enter') k = META.kbd.enter;
+    else if (e.key === 'Backspace') k = META.kbd.back;
     if (!k) return;
     e.preventDefault();
     doKey(k);
@@ -213,9 +160,9 @@
   }
   boardEl.innerHTML =
     '<div class="bgrid">' +
-    '<div class="blabel"><span class="lamp" id="lampH"></span>HOME</div>' +
+    '<div class="blabel"><span class="lamp" id="lampH"></span><span id="b-Hname">HOME</span></div>' +
     '<div class="clockbox"><div class="clock-digits" id="b-clock"></div><div class="small-label">PERIOD</div><div class="period-digits" id="b-period"></div><span class="horn" id="b-horn">HORN</span></div>' +
-    '<div class="blabel">VISITOR<span class="lamp" id="lampV"></span></div>' +
+    '<div class="blabel"><span id="b-Vname">VISITOR</span><span class="lamp" id="lampV"></span></div>' +
     '<div class="cell score-digits" id="b-Hscore"></div>' +
     '<div class="cell score-digits" id="b-Vscore"></div>' +
     '<div class="cell"><div class="small-label">SHOTS</div><div class="sog-digits" id="b-Hsog"></div></div>' +
@@ -224,7 +171,7 @@
     '<div class="pens">' + pensHTML('H') + '</div><div></div><div class="pens">' + pensHTML('V') + '</div>' +
     '</div>';
   var B = {};
-  ['clock', 'period', 'horn', 'Hscore', 'Vscore', 'Hsog', 'Vsog', 'Hwait', 'Vwait', 'Hp0', 'Hp1', 'Ht0', 'Ht1', 'Vp0', 'Vp1', 'Vt0', 'Vt1'].forEach(function (id) { B[id] = $('#b-' + id); });
+  ['clock', 'period', 'horn', 'Hscore', 'Vscore', 'Hsog', 'Vsog', 'Hwait', 'Vwait', 'Hp0', 'Hp1', 'Ht0', 'Ht1', 'Vp0', 'Vp1', 'Vt0', 'Vt1', 'Hname', 'Vname'].forEach(function (id) { B[id] = $('#b-' + id); });
   B.lampH = $('#lampH'); B.lampV = $('#lampV');
   function padL(s, n) { s = String(s); while (s.length < n) s = ' ' + s; return s; }
 
@@ -272,15 +219,18 @@
   syncSoundBtn();
 
   /* ---------- render ---------- */
+  // A one-line display scrolls anything longer than its 16 characters, like the real thing.
+  function displayText(lines) {
+    if (META.lcdLines === 2) return lines[0] + '\n' + lines[1];
+    var t = lines[0] || '';
+    if (t.length <= 16) return t;
+    var loop = t + '      ', step = Math.floor(performance.now() / 260) % loop.length;
+    return (loop + loop).slice(step, step + 16);
+  }
   function render() {
-    var l = E.lcd(sim);
-    var txt = l[0] + '\n' + l[1];
+    var txt = displayText(E.lcd(sim));
     if (lcdEl.textContent !== txt) lcdEl.textContent = txt;
-    ledEl.classList.toggle('on', sim.autoHorn); led2El.classList.toggle('on', sim.autoHorn);
-    rockerEl.classList.toggle('on', sim.timeIn); rockerEl.setAttribute('aria-pressed', String(sim.timeIn));
-    rstateEl.classList.toggle('on', sim.timeIn);
-    rstateEl.textContent = sim.timeIn ? (sim.clock > 0 || !sim.countDown ? 'Clock running' : 'On, at 0:00') : 'Clock stopped';
-    shiftEl.classList.toggle('on', sim.shift);
+    CU.update(sim, consoleEl);
 
     var b = E.board(sim);
     setSeg(B.clock, padL(b.clock, 5), false);
@@ -309,186 +259,9 @@
   }
 
   /* ---------- lessons ---------- */
-  function midGame(s, o) {
-    o = o || {};
-    s.period = o.period || 1;
-    s.clock = (o.clock != null ? o.clock : cfg.periodLen - 187) * SEC;
-    s.H.score = o.h || 0; s.V.score = o.v || 0;
-    s.H.sog = o.hs != null ? o.hs : 6; s.V.sog = o.vs != null ? o.vs : 4;
-    if (o.running) E.setTimeIn(s, true);
-  }
-  function inMode(s, kind, team) { return !!s.mode && s.mode.kind === kind && (!team || s.mode.team === team); }
-  function hasPen(s, T, p, total) { var x = E.findPen(s, T, p); return !!x && (total == null || x.total === total); }
-
-  var LESSONS = [
-    {
-      id: 'meet', title: 'Meet the console', sub: 'Where everything is',
-      intro: function () { return 'This is the console in the scorekeeper\'s box. Everything you press shows up on the big scoreboard above it. You only need about a dozen of these keys.'; },
-      setup: function (s) { midGame(s, { clock: cfg.periodLen }); },
-      steps: [
-        { t: 'Find the <b>TIME IN</b> switch on the right side. It starts and stops the game clock. Flip it on.', keys: ['timein'], check: function (s) { return s.timeIn; } },
-        { t: 'The game clock on the scoreboard is counting down. Flip <b>TIME IN</b> off to stop it.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Blue keys are always the <b>home</b> team. Press <b>HOME SCORE</b> and look at the small screen: it now says H.SCORE and shows the score.', keys: ['hscore'], check: function (s) { return inMode(s, 'score', 'H'); } },
-        { t: 'Yellow keys are always the <b>visitor</b> team. Press <b>VISITOR S.O.G.</b> (shots on goal).', keys: ['vsog'], check: function (s) { return inMode(s, 'sog', 'V'); } },
-        { t: 'The green labels are each key\'s second job. You reach them with <b>SHIFT</b>. Press SHIFT now. It lights up.', keys: ['shift'], check: function (s) { return s.shift; } },
-        { t: 'Now press <b>CLR</b>. With SHIFT, CLR becomes ESC, which backs out of whatever you were doing. The screen goes back to "- HOCKEY -".', keys: ['clr'], check: function (s) { return !s.shift && !s.mode; } }
-      ],
-      wrap: 'You know the layout. Next is running the clock, which is most of the job.'
-    },
-    {
-      id: 'clock', title: 'Start and stop the clock', sub: 'The skill that matters most',
-      intro: function () { return 'The clock runs only while the puck is in play. Keep your eyes on the referee, not on the console. Your hand stays on the switch.'; },
-      setup: function (s) { midGame(s, { clock: cfg.periodLen, hs: 0, vs: 0 }); },
-      steps: [
-        { t: 'The referee drops the puck for the opening faceoff. Flip <b>TIME IN</b> on.', keys: ['timein'], check: function (s) { return s.timeIn; } },
-        { t: 'Whistle! The puck flew over the glass. Flip <b>TIME IN</b> off.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Faceoff. Clock on.', keys: ['timein'], check: function (s) { return s.timeIn; } },
-        { t: 'Whistle for offside. Clock off.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Start the clock when the puck leaves the referee\'s hand, not when the players line up. Clock on.', keys: ['timein'], check: function (s) { return s.timeIn; } },
-        { t: 'Whistle. Clock off.', keys: ['timein'], check: function (s) { return !s.timeIn; } }
-      ],
-      wrap: 'Each second you are late is a second added to or taken from the game. The Practice tab has a reaction drill for exactly this. On a computer, the space bar flips TIME IN.'
-    },
-    {
-      id: 'setclock', title: 'Set the period clock', sub: 'Before every period',
-      intro: function () { return 'Before each period you set the clock to ' + fmt(cfg.periodLen) + '. The console will not let you change the clock while TIME IN is on.'; },
-      setup: function (s) { s.clock = 0; s.timeIn = true; },
-      steps: [
-        { t: 'Someone left the <b>TIME IN</b> switch on. Flip it off first.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Press <b>CLOCK SET</b>. The screen shows SET CLK. and a time.', keys: ['clockset'], check: function (s) { return inMode(s, 'clockset') && s.mode.which === 0; } },
-        { t: function () { return 'Type the period length without the colon: <b>' + timeDigits(cfg.periodLen) + '</b> for ' + fmt(cfg.periodLen) + '.'; }, keys: function () { return timeKeys(cfg.periodLen); }, check: function (s) { return inMode(s, 'clockset') && s.mode.entry && E.entryMs(s.mode.entry) === cfg.periodLen * SEC; } },
-        { t: 'Press <b>ENTER</b>. The scoreboard shows the new time.', keys: ['enter'], check: function (s) { return s.clock === cfg.periodLen * SEC && !inMode(s, 'clockset'); } }
-      ],
-      wrap: 'Typed a wrong digit? Press CLR and type it again before ENTER. Pressing CLOCK SET more than once switches to the break clock (SET BRK.) and overtime clock (SET O.T.). You will rarely need those.'
-    },
-    {
-      id: 'goal', title: 'Record a goal', sub: 'And the key that looks like it but isn\'t',
-      intro: function () { return 'When a goal is scored, the referee blows the whistle and points at the net.'; },
-      setup: function (s) { midGame(s, { running: true }); },
-      steps: [
-        { t: 'Whistle. Home scored! Stop the clock first.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Press <b>HOME SCORE</b>, then <b>+1</b>. The red goal light flashes by itself.', keys: ['hscore', 'plus1'], check: function (s, p) { return s.H.score === p.H.score + 1; } },
-        { t: 'A goal also counts as a shot on goal. Press <b>HOME S.O.G.</b>, then <b>+1</b>.', keys: ['hsog', 'plus1'], check: function (s, p) { return s.H.sog === p.H.sog + 1; } },
-        { t: 'Later, the visitors score. Press <b>VISITOR SCORE</b>, then <b>+1</b>.', keys: ['vscore', 'plus1'], check: function (s, p) { return s.V.score === p.V.score + 1; } },
-        { t: 'Now a trap. Press <b>HOME GOAL</b>. The red light turns on but the score does not change. HOME GOAL only controls the light.', keys: ['hgoal'], start: function (s) { s.H.goalMs = 0; s.V.goalMs = 0; }, check: function (s) { return s.H.goalManual; } },
-        { t: 'Press <b>HOME GOAL</b> again to turn the light off. For goals, always use HOME SCORE.', keys: ['hgoal'], check: function (s) { return !s.H.goalManual && s.H.goalMs === 0; } }
-      ],
-      wrap: 'Goal = clock off, SCORE +1, S.O.G. +1. Added it to the wrong team? The next lesson shows the fix.'
-    },
-    {
-      id: 'fixscore', title: 'Fix a wrong number', sub: 'Score, shots or period',
-      intro: function () { return 'Mistakes happen to everyone. The referee will tell you what the board should say.'; },
-      setup: function (s) { midGame(s, { h: 3, v: 1, hs: 8 }); },
-      steps: [
-        { t: 'The board shows Home 3, but the ref says it should be 2. Press <b>HOME SCORE</b>, then <b>-1</b>.', keys: ['hscore', 'minus1'], check: function (s) { return s.H.score === 2; } },
-        { t: 'You can also type the number. Visitor should have 2: press <b>VISITOR SCORE</b>, type <b>2</b>, press <b>ENTER</b>.', keys: ['vscore', 'd2', 'enter'], check: function (s) { return s.V.score === 2; } },
-        { t: 'Shots work the same way. Home should have 10: <b>HOME S.O.G.</b>, type <b>1 0</b>, press <b>ENTER</b>.', keys: ['hsog', 'd1', 'd0', 'enter'], check: function (s) { return s.H.sog === 10; } }
-      ],
-      wrap: '+1 and -1 nudge a number up or down. Typing a number and pressing ENTER replaces it. Both work for score, shots and period.'
-    },
-    {
-      id: 'shots', title: 'Count shots on goal', sub: 'While the clock keeps running',
-      intro: function () { return 'Shots happen often and the clock keeps running. A shot counts only if the goalie stops it or it goes in.'; },
-      setup: function (s) { midGame(s, { running: true, hs: 3, vs: 2 }); },
-      steps: [
-        { t: 'Home shoots, the goalie catches it, play goes on. Press <b>HOME S.O.G.</b>, then <b>+1</b>.', keys: ['hsog', 'plus1'], check: function (s, p) { return s.H.sog === p.H.sog + 1; } },
-        { t: 'Another home shot, saved. The screen still says H.S.O.GOAL, so you can just press <b>+1</b> again.', keys: ['plus1'], check: function (s, p) { return s.H.sog === p.H.sog + 1; } },
-        { t: 'Visitor shot, saved. Press <b>VISITOR S.O.G.</b>, then <b>+1</b>.', keys: ['vsog', 'plus1'], check: function (s, p) { return s.V.sog === p.V.sog + 1; } },
-        { t: 'The goalie covers the puck and the ref whistles. Clock off.', keys: ['timein'], check: function (s) { return !s.timeIn; } }
-      ],
-      wrap: 'Missed nets, blocked shots and shots off the post are not shots on goal. If you are unsure, check with the official scorer between periods.'
-    },
-    {
-      id: 'minor', title: 'Enter a penalty', sub: 'The four-key sequence',
-      intro: function () { return 'The referee signals a penalty: Visitor #7, tripping, a ' + minorStr() + ' minor. Play already stopped, so the clock is off.'; },
-      setup: function (s) { midGame(s, { h: 1 }); },
-      steps: [
-        { t: 'Press <b>VISITOR PENALTY</b>.', keys: ['vpen'], check: function (s) { return inMode(s, 'pen', 'V'); } },
-        { t: function () { return 'Press <b>' + KL[minorKey()][0] + '</b> for ' + minorStr() + '. ' + (minorKey() === 'plus3' ? 'That is the key with the 01:30 sticker.' : 'The +1 key enters 2:00.') + ' The screen now asks ENTER PLY.NO. (player number).'; }, keys: function () { return [minorKey()]; }, check: function (s) { return inMode(s, 'pen', 'V') && s.mode.adds.indexOf(cfg.minor * SEC) >= 0; } },
-        { t: 'Type the player number: <b>7</b>.', keys: ['d7'], check: function (s) { return inMode(s, 'pen', 'V') && s.mode.entry === '7'; } },
-        { t: 'Press <b>ENTER</b>. Player 7 and the penalty time appear on the scoreboard.', keys: ['enter'], check: function (s) { return hasPen(s, 'V', 7); } },
-        { t: 'Puck drop. Flip <b>TIME IN</b> on and watch the penalty clock count down with the game clock.', keys: ['timein'], check: function (s) { return s.timeIn; } },
-        { t: 'Whistle. Clock off. The penalty clock stops too.', keys: ['timein'], check: function (s) { return !s.timeIn; } }
-      ],
-      wrap: 'Order matters: PENALTY, time key, player number, ENTER. If you press ENTER before typing the number, the screen says NO PENALTY FOUND and nothing is saved. Just start over.'
-    },
-    {
-      id: 'pp', title: 'Power-play goal', sub: 'Clearing a penalty early',
-      intro: function () { return 'Visitor #7 is in the penalty box, so Home has an extra skater. That is a power play.'; },
-      setup: function (s) { midGame(s, { running: true, h: 1, v: 1 }); E.addPenalty(s, 'V', '7', cfg.minor * SEC); s.V.pens[0].left = 52 * SEC; },
-      steps: [
-        { t: 'Whistle. Home scores on the power play! Clock off.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Add the goal: <b>HOME SCORE</b>, then <b>+1</b>.', keys: ['hscore', 'plus1'], check: function (s, p) { return s.H.score === p.H.score + 1; } },
-        { t: 'A power-play goal ends #7\'s minor, but the console will not clear it for you. Press <b>VISITOR PENALTY</b>, type <b>7</b>, press <b>ENTER</b>.', keys: ['vpen', 'd7', 'enter'], check: function (s) { return inMode(s, 'penedit', 'V'); } },
-        { t: 'The screen shows #7 and the time left. Press <b>ENTER</b> again to clear it.', keys: ['enter'], check: function (s) { return !hasPen(s, 'V', 7); } }
-      ],
-      wrap: 'Only a minor ends early. A 5:00 major stays on even if the other team scores. If two players are serving minors, clear the one whose penalty started first.'
-    },
-    {
-      id: 'morepens', title: 'More penalty situations', sub: 'Majors, a waiting penalty, the list',
-      intro: function () { return 'Each team shows two penalties at a time. The console stores up to three more and starts them as the first two run out.'; },
-      setup: function (s) { midGame(s, {}); E.addPenalty(s, 'V', '7', cfg.minor * SEC); s.V.pens[0].left = 70 * SEC; E.addPenalty(s, 'V', '12', cfg.minor * SEC); },
-      steps: [
-        { t: function () { return 'Visitor #22 also gets a ' + minorStr() + ' minor. Enter it: <b>VISITOR PENALTY</b>, <b>' + KL[minorKey()][0] + '</b>, <b>2 2</b>, <b>ENTER</b>.'; }, keys: function () { return ['vpen', minorKey(), 'd2', 'd2', 'enter']; }, check: function (s) { return hasPen(s, 'V', 22); } },
-        { t: 'Only #7 and #12 show on the board. #22 is waiting. Flip <b>TIME IN</b> on.', keys: ['timein'], check: function (s) { return s.timeIn; } },
-        { t: 'Whistle. Clock off.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Now a major: Home #4, 5:00 for checking from behind. <b>HOME PENALTY</b>, <b>+2</b> (5:00), <b>4</b>, <b>ENTER</b>.', keys: ['hpen', 'plus2', 'd4', 'enter'], check: function (s) { return hasPen(s, 'H', 4, 300 * SEC); } },
-        { t: 'To see every penalty a team has had, press <b>SHIFT</b>, then <b>VISITOR PENALTY</b>. Do it again to scroll through the list.', keys: ['shift', 'vpen'], check: function (s) { return inMode(s, 'track', 'V'); } }
-      ],
-      wrap: function () { return 'A double minor (two minors on one player): press the time key twice before the number, for example ' + KL[minorKey()][0] + ', ' + KL[minorKey()][0] + '. The console adds the two times together.'; }
-    },
-    {
-      id: 'fixclock', title: 'Fix the clock', sub: 'When the ref wants time back',
-      intro: function () { return 'The referee says the clock ran 3 seconds too long. It shows 8:15 and should show 8:18.'; },
-      setup: function (s) { midGame(s, { clock: 495, h: 2, v: 2 }); E.addPenalty(s, 'V', '9', cfg.minor * SEC); s.V.pens[0].left = 61 * SEC; },
-      steps: [
-        { t: 'TIME IN is already off. Press <b>CLOCK SET</b>.', keys: ['clockset'], check: function (s) { return inMode(s, 'clockset'); } },
-        { t: 'Type <b>8 1 8</b>.', keys: ['d8', 'd1', 'd8'], check: function (s) { return inMode(s, 'clockset') && s.mode.entry && E.entryMs(s.mode.entry) === 498 * SEC; } },
-        { t: 'Press <b>ENTER</b>.', keys: ['enter'], check: function (s) { return s.clock === 498 * SEC; } },
-        { t: 'The screen asks CORR.PENALTY?Y/N: do you want to change the penalty times too? Usually not. Press <b>SHIFT</b>, then <b>6</b> (NO).', keys: ['shift', 'd6'], check: function (s) { return !s.mode && s.clock === 498 * SEC; } }
-      ],
-      wrap: 'Answer YES (SHIFT + 4) only when the ref gives new penalty times too. The console then shows each penalty in turn. Type its new time and press ENTER.'
-    },
-    {
-      id: 'endperiod', title: 'End a period', sub: 'Horn, next period, reset the clock',
-      intro: function () { return 'The period ends when the clock hits zero. The AUTO HORN light is on, so the horn sounds by itself.'; },
-      setup: function (s) { midGame(s, { clock: 7, running: true, h: 2, v: 1 }); },
-      steps: [
-        { t: 'Let the clock run out and listen for the horn.', keys: [], check: function (s) { return s.clock === 0; } },
-        { t: 'Flip <b>TIME IN</b> off.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Change the period: <b>PERIOD</b>, then <b>+1</b>.', keys: ['period', 'plus1'], check: function (s) { return s.period === 2; } },
-        { t: function () { return 'Set the clock for period 2: <b>CLOCK SET</b>, type <b>' + timeDigits(cfg.periodLen) + '</b>, <b>ENTER</b>.'; }, keys: function () { return ['clockset'].concat(timeKeys(cfg.periodLen), ['enter']); }, check: function (s) { return s.clock === cfg.periodLen * SEC && s.periodType === 'game' && !inMode(s, 'clockset'); } }
-      ],
-      wrap: 'Penalties still running carry into the next period. Leave them. If your rink runs an intermission countdown, press CLOCK SET twice to reach SET BRK.'
-    },
-    {
-      id: 'timeout', title: 'Timeouts', sub: 'Stop, charge the team, start the timer',
-      intro: function () { return 'Each team usually gets one timeout per game. When a coach calls one, play stops.'; },
-      setup: function (s) { midGame(s, { running: true }); },
-      steps: [
-        { t: 'Whistle: Home calls a timeout. Clock off.', keys: ['timein'], check: function (s) { return !s.timeIn; } },
-        { t: 'Press <b>HOME TIMEOUT</b>. The screen shows the timeout length and how many Home has left.', keys: ['htimeout'], check: function (s) { return inMode(s, 'timeout', 'H'); } },
-        { t: 'Press <b>-1</b>. That starts the timeout countdown on the screen and uses up one of Home\'s timeouts.', keys: ['minus1'], check: function (s, p) { return !!s.timeout && s.H.tol === p.H.tol - 1; } },
-        { t: 'The teams line up for the faceoff. Flip <b>TIME IN</b> on.', keys: ['timein'], check: function (s) { return s.timeIn; } }
-      ],
-      wrap: 'Many youth games do not run the timeout timer. Ask your rink if they want you to use it.'
-    },
-    {
-      id: 'newgame', title: 'Start a new game', sub: 'Clear the last game first',
-      intro: function () { return 'The console remembers the last game, even after being switched off. Clear it before you start yours.'; },
-      setup: function (s) { midGame(s, { clock: 0, period: 3, h: 4, v: 2, hs: 21, vs: 17 }); E.addPenalty(s, 'H', '11', cfg.minor * SEC); },
-      steps: [
-        { t: 'Press <b>SHIFT</b>, then <b>PERIOD</b>. The green label under PERIOD says NEW GAME.', keys: ['shift', 'period'], check: function (s) { return inMode(s, 'yesno') && s.mode.q.indexOf('NEW GAME') === 0; } },
-        { t: 'The screen asks NEW GAME? Y/N. Press <b>SHIFT</b>, then <b>4</b> (YES).', keys: ['shift', 'd4'], check: function (s) { return s.H.score === 0 && s.V.score === 0 && s.period === 1 && !s.H.pens.length; } }
-      ],
-      wrap: function () { return 'The clock goes back to the stored period length. On the real console, check that it shows ' + fmt(cfg.periodLen) + '. If not, set it with CLOCK SET. Then you are ready for puck drop.'; }
-    }
-  ];
-  function val(x) { return typeof x === 'function' ? x() : x; }
-
   function openLesson(i) {
     var def = LESSONS[i];
-    sim = E.newGame(cfg);
+    sim = newGame();
     def.setup(sim);
     lesson = { i: i, def: def, step: 0, snap: clone(sim), finished: false, passing: false };
     startStep();
@@ -513,7 +286,7 @@
         lesson.step++;
         if (lesson.step >= lesson.def.steps.length) {
           lesson.finished = true;
-          doneLessons[lesson.def.id] = true; save('done', doneLessons);
+          doneLessons[lesson.def.id] = true; save('done.' + consoleId, doneLessons);
           setHints(null);
         } else startStep();
         renderPanel();
@@ -521,7 +294,7 @@
     }
   }
 
-  /* ---------- drills ---------- */
+  /* ---------- drills: what happens on the ice; each console supplies the keys ---------- */
   function ev(o) { return Object.assign({ wait: 1600, limit: 25000, cls: '', keys: [] }, o); }
   function drop(wait) {
     return ev({ cue: 'Puck drop', cls: 'drop', sound: 'drop', detail: 'Faceoff. Start the clock.', keys: ['timein'], limit: 5000, wait: wait || rnd(1500, 3000), reaction: true,
@@ -532,116 +305,116 @@
       check: function (s) { return !s.timeIn; }, fix: function (s) { E.setTimeIn(s, false); } });
   }
   function penaltyEv(T, p, ms, why, wait) {
-    var team = T === 'H' ? 'Home' : 'Visitor', key = ms === cfg.minor * SEC ? minorKey() : ms === 300 * SEC ? 'plus2' : 'plus1';
-    return ev({ cue: 'Whistle: penalty', cls: 'whistle', sound: 'whistle', wait: wait || rnd(3000, 6000),
-      detail: team + ' #' + p + ', ' + why + ', ' + E.fmt(ms) + '. Stop the clock and enter it.',
-      keys: ['timein', T === 'H' ? 'hpen' : 'vpen', key].concat(numKeys(p), ['enter']),
+    return ev({ cue: 'Whistle: penalty', cls: 'whistle', sound: 'whistle', wait: wait || rnd(3000, 6000), limit: 30000,
+      detail: teamName(T) + ' #' + p + ', ' + why + ', ' + E.fmt(ms) + '. Stop the clock and enter it.',
+      keys: function () { return ['timein'].concat(CU.recipes.penalty(T, p, ms)); },
       check: function (s) { return !s.timeIn && hasPen(s, T, p, ms); },
-      fix: function (s) { E.setTimeIn(s, false); if (!hasPen(s, T, p)) E.addPenalty(s, T, String(p), ms); s.mode = null; } });
+      fix: function (s) { E.setTimeIn(s, false); if (!hasPen(s, T, p)) E.addPenalty(s, T, String(p), ms); s.mode = null; s.set = false; } });
   }
   function goalEv(T, p, wait, extra) {
-    var team = T === 'H' ? 'Home' : 'Visitor', t = T.toLowerCase();
     return ev({ cue: 'Whistle: goal!', cls: 'whistle', sound: 'whistle', wait: wait || rnd(3000, 6000),
-      detail: team + ' #' + p + ' scores' + (extra || '') + '. Stop the clock, add the goal and the shot.',
-      keys: ['timein', t + 'score', 'plus1', t + 'sog', 'plus1'],
+      detail: teamName(T) + ' #' + p + ' scores' + (extra || '') + '. Stop the clock, add the goal and the shot.',
+      keys: function () { return ['timein'].concat(CU.recipes.goal(T)); },
       check: function (s, q) { return !s.timeIn && s[T].score === q[T].score + 1 && s[T].sog === q[T].sog + 1; },
-      fix: function (s, q) { E.setTimeIn(s, false); s[T].score = q[T].score + 1; s[T].sog = q[T].sog + 1; s.mode = null; } });
+      fix: function (s, q) { E.setTimeIn(s, false); s[T].score = q[T].score + 1; s[T].sog = q[T].sog + 1; s.mode = null; s.set = false; } });
   }
   function shotEv(T, wait) {
-    var team = T === 'H' ? 'Home' : 'Visitor', t = T.toLowerCase();
-    return ev({ cue: 'Shot on goal', wait: wait || rnd(2500, 5000), detail: team + ' shoots, the goalie makes the save, play goes on. Count the shot.',
-      keys: [t + 'sog', 'plus1'], limit: 15000,
+    return ev({ cue: 'Shot on goal', wait: wait || rnd(2500, 5000), detail: teamName(T) + ' shoots, the goalie makes the save, play goes on. Count the shot.',
+      keys: function () { return CU.recipes.shot(T); }, limit: 15000,
       check: function (s, q) { return s[T].sog === q[T].sog + 1; },
       fix: function (s, q) { s[T].sog = q[T].sog + 1; } });
   }
   function clearEv(T, p, why) {
-    var t = T.toLowerCase();
     return ev({ cue: 'Power-play goal', wait: 900, detail: why,
-      keys: [t + 'pen'].concat(numKeys(p), ['enter', 'enter']),
+      keys: function (q) { return CU.recipes.clearPenalty(T, p, q); },
       check: function (s) { return !hasPen(s, T, p); },
-      fix: function (s) { var x = E.findPen(s, T, p); if (x) s[T].pens.splice(s[T].pens.indexOf(x), 1); s.mode = null; } });
+      fix: function (s) { var x = E.findPen(s, T, p); if (x) s[T].pens.splice(s[T].pens.indexOf(x), 1); s.mode = null; s.set = false; } });
   }
   function refEv(detail, keys, check, fix, wait) {
-    return ev({ cue: 'Ref says', wait: wait || 1400, limit: 40000, detail: detail, keys: keys, check: check, fix: fix });
+    return ev({ cue: 'Ref says', wait: wait || 1400, limit: 45000, detail: detail, keys: keys, check: check,
+      fix: function (s, q) { fix(s, q); s.mode = null; s.set = false; } });
   }
 
-  var DRILLS = [
-    {
-      id: 'react', title: 'Whistle and faceoff', sub: '12 cues. Only the TIME IN switch. Measures your reaction time.',
-      setup: function (s) { s.clock = cfg.periodLen * SEC; },
-      build: function () {
-        var out = [];
-        for (var i = 0; i < 6; i++) { out.push(drop(i === 0 ? 1500 : rnd(1500, 3500))); out.push(whistleEv(null, rnd(2500, 6500))); }
-        return out;
-      }
-    },
-    {
-      id: 'period', title: 'Play a period', sub: 'Shots, a penalty, a goal, a power play and the end of the period.',
-      setup: function (s) { s.clock = cfg.periodLen * SEC; },
-      build: function () {
-        var pl = pickPlayers(2), p1 = pl[0], p2 = pl[1];
-        return [
-          drop(1500), shotEv('H'), whistleEv('Offside. Stop the clock.'), drop(),
-          penaltyEv('V', p1, cfg.minor * SEC, 'hooking'), drop(), shotEv('V'),
-          goalEv('H', p2, null, ' on the power play'),
-          clearEv('V', p1, 'Home scored while Visitor #' + p1 + ' was in the box. Clear #' + p1 + '\'s minor.'),
-          drop(),
-          ev({ cue: 'End of period', wait: 2500, limit: 20000, detail: 'Skipping ahead to the last seconds. Let the clock run out.', keys: [],
-            pre: function (s) { if (!s.timeIn) E.setTimeIn(s, true); s.clock = Math.min(s.clock, 6 * SEC); },
-            check: function (s) { return s.clock === 0; }, fix: function (s) { s.clock = 0; } }),
-          ev({ cue: 'Intermission', wait: 1500, limit: 50000, detail: 'Get ready for period 2: clock off, period up by one, clock set to ' + fmt(cfg.periodLen) + '.',
-            keys: ['timein', 'period', 'plus1', 'clockset'].concat(timeKeys(cfg.periodLen), ['enter']),
-            check: function (s, q) { return !s.timeIn && s.period === q.period + 1 && s.clock === cfg.periodLen * SEC && s.periodType === 'game'; },
-            fix: function (s, q) { E.setTimeIn(s, false); s.period = q.period + 1; s.clock = cfg.periodLen * SEC; s.periodType = 'game'; s.mode = null; } })
-        ];
-      }
-    },
-    {
-      id: 'pens', title: 'Penalty trouble', sub: 'A major, a waiting penalty, and which one a goal ends.',
-      setup: function (s) { s.clock = (cfg.periodLen - 240) * SEC; s.period = 2; s.H.score = 1; s.V.score = 1; s.H.sog = 9; s.V.sog = 8; },
-      build: function () {
-        var pl = pickPlayers(3), a = pl[0], b = pl[1], c = pl[2];
-        return [
-          drop(1500), penaltyEv('H', a, 300 * SEC, 'boarding (major)'), drop(),
-          penaltyEv('H', b, cfg.minor * SEC, 'tripping'), drop(),
-          penaltyEv('H', c, cfg.minor * SEC, 'slashing'), drop(),
-          goalEv('V', rnd(2, 29), null, ' on the power play'),
-          clearEv('H', b, 'A power-play goal ends one minor: the one that started first. That is #' + b + ', not the major on #' + a + '. Clear it.'),
-          drop()
-        ];
-      }
-    },
-    {
-      id: 'fix', title: 'Fix the board', sub: 'The ref spotted five mistakes. Correct each one.',
-      setup: function (s) {
-        s.period = 3; s.clock = 495 * SEC; s.H.score = 3; s.V.score = 1; s.H.sog = 12; s.V.sog = 11;
-        E.addPenalty(s, 'V', '7', 300 * SEC); s.V.pens[0].left = 290 * SEC;
+  function buildDrills() {
+    return [
+      {
+        id: 'react', title: 'Whistle and faceoff', sub: '12 cues. Only the ' + META.switchName + '. Measures your reaction time.',
+        setup: function (s) { s.clock = cfg.periodLen * SEC; },
+        build: function () {
+          var out = [];
+          for (var i = 0; i < 6; i++) { out.push(drop(i === 0 ? 1500 : rnd(1500, 3500))); out.push(whistleEv(null, rnd(2500, 6500))); }
+          return out;
+        }
       },
-      build: function () {
-        return [
-          refEv('That last home goal was waved off. Home should have 2.', ['hscore', 'minus1'],
-            function (s) { return s.H.score === 2; }, function (s) { s.H.score = 2; s.mode = null; }, 1200),
-          refEv('Visitor #7 got a minor, not a major. Change it to ' + minorStr() + '.', ['vpen', 'd7', 'enter'].concat(timeKeys(cfg.minor), ['enter']),
-            function (s) { var x = E.findPen(s, 'V', 7); return !!x && Math.abs(x.left - cfg.minor * SEC) < SEC; },
-            function (s) { var x = E.findPen(s, 'V', 7); if (x) { x.left = cfg.minor * SEC; x.total = x.left; } s.mode = null; }),
-          refEv('The board says period 3. It is period 2.', ['period', 'minus1'],
-            function (s) { return s.period === 2; }, function (s) { s.period = 2; s.mode = null; }),
-          refEv('Put 3 seconds back: the clock should read 8:18. Keep the penalty times as they are.', ['clockset', 'd8', 'd1', 'd8', 'enter', 'shift', 'd6'],
-            function (s) { return s.clock === 498 * SEC && !s.mode; }, function (s) { s.clock = 498 * SEC; s.mode = null; }),
-          refEv('Visitor should have 12 shots, not 11.', ['vsog', 'plus1'],
-            function (s) { return s.V.sog === 12; }, function (s) { s.V.sog = 12; s.mode = null; }),
-          drop(2000)
-        ];
+      {
+        id: 'period', title: 'Play a period', sub: 'Shots, a penalty, a goal, a power play and the end of the period.',
+        setup: function (s) { s.clock = cfg.periodLen * SEC; },
+        build: function () {
+          var pl = pickPlayers(2), p1 = pl[0], p2 = pl[1];
+          return [
+            drop(1500), shotEv('H'), whistleEv('Offside. Stop the clock.'), drop(),
+            penaltyEv('V', p1, cfg.minor * SEC, 'hooking'), drop(), shotEv('V'),
+            goalEv('H', p2, null, ' on the power play'),
+            clearEv('V', p1, 'Home scored while ' + teamName('V') + ' #' + p1 + ' was in the box. Clear #' + p1 + '\'s minor.'),
+            drop(),
+            ev({ cue: 'End of period', wait: 2500, limit: 20000, detail: 'Skipping ahead to the last seconds. Let the clock run out.', keys: [],
+              pre: function (s) { if (!s.timeIn) E.setTimeIn(s, true); s.clock = Math.min(s.clock, 6 * SEC); },
+              check: function (s) { return s.clock === 0; }, fix: function (s) { s.clock = 0; } }),
+            ev({ cue: 'Intermission', wait: 1500, limit: 50000, detail: 'Get ready for period 2: clock off, period up by one, clock set to ' + fmt(cfg.periodLen) + '.',
+              keys: function (q) { return ['timein'].concat(CU.recipes.nextPeriod(q)); },
+              check: function (s, q) { return !s.timeIn && s.period === q.period + 1 && s.clock === cfg.periodLen * SEC && s.periodType === 'game' && !s.mode; },
+              fix: function (s, q) { E.setTimeIn(s, false); s.period = q.period + 1; s.clock = cfg.periodLen * SEC; s.periodType = 'game'; s.mode = null; s.set = false; } })
+          ];
+        }
+      },
+      {
+        id: 'pens', title: 'Penalty trouble', sub: 'A major, a waiting penalty, and which one a goal ends.',
+        setup: function (s) { s.clock = (cfg.periodLen - 240) * SEC; s.period = 2; s.H.score = 1; s.V.score = 1; s.H.sog = 9; s.V.sog = 8; },
+        build: function () {
+          var pl = pickPlayers(3), a = pl[0], b = pl[1], c = pl[2];
+          return [
+            drop(1500), penaltyEv('H', a, 300 * SEC, 'boarding (major)'), drop(),
+            penaltyEv('H', b, cfg.minor * SEC, 'tripping'), drop(),
+            penaltyEv('H', c, cfg.minor * SEC, 'slashing'), drop(),
+            goalEv('V', rnd(2, 29), null, ' on the power play'),
+            clearEv('H', b, 'A power-play goal ends one minor: the one that started first. That is #' + b + ', not the major on #' + a + '. Clear it.'),
+            drop()
+          ];
+        }
+      },
+      {
+        id: 'fix', title: 'Fix the board', sub: 'The ref spotted five mistakes. Correct each one.',
+        setup: function (s) {
+          s.period = 3; s.clock = 495 * SEC; s.H.score = 3; s.V.score = 1; s.H.sog = 12; s.V.sog = 11;
+          E.addPenalty(s, 'V', '7', 300 * SEC); s.V.pens[0].left = 290 * SEC;
+        },
+        build: function () {
+          var R = CU.recipes;
+          return [
+            refEv('That last home goal was waved off. Home should have 2.', function (q) { return R.scoreDown('H', q); },
+              function (s) { return s.H.score === 2; }, function (s) { s.H.score = 2; }, 1200),
+            refEv(teamName('V') + ' #7 got a minor, not a major. Change it to ' + minorStr() + '.', function (q) { return R.setPenaltyTime('V', 7, cfg.minor * SEC, q); },
+              function (s) { var x = E.findPen(s, 'V', 7); return !!x && Math.abs(x.left - cfg.minor * SEC) < SEC; },
+              function (s) { var x = E.findPen(s, 'V', 7); if (x) { x.left = cfg.minor * SEC; x.total = x.left; } }),
+            refEv('The board says period 3. It is period 2.', function (q) { return R.periodDown(q); },
+              function (s) { return s.period === 2; }, function (s) { s.period = 2; }),
+            refEv('Put 3 seconds back: the clock should read 8:18. Keep the penalty times as they are.', function (q) { return R.fixClock(498, q); },
+              function (s) { return s.clock === 498 * SEC && !s.mode; }, function (s) { s.clock = 498 * SEC; }),
+            refEv(teamName('V') + ' should have 12 shots, not 11.', function (q) { return R.shotUp('V', q); },
+              function (s) { return s.V.sog === 12; }, function (s) { s.V.sog = 12; }),
+            drop(2000)
+          ];
+        }
       }
-    }
-  ];
+    ];
+  }
 
   function startDrill(i) {
     audio();
     var def = DRILLS[i];
-    sim = E.newGame(cfg);
+    sim = newGame();
     def.setup(sim);
-    drill = { def: def, events: def.build(), idx: -1, phase: 'wait', until: 0, t0: 0, results: [], snap: null, last: null };
+    drill = { def: def, events: def.build(), idx: -1, phase: 'wait', until: 0, t0: 0, results: [], snap: null, last: null, keys: [] };
     setHints(null);
     nextEvent(performance.now());
     renderPanel();
@@ -661,10 +434,11 @@
     if (drill.phase === 'wait' && now >= drill.until) {
       if (e.pre) e.pre(sim);
       drill.snap = clone(sim);
+      drill.keys = typeof e.keys === 'function' ? e.keys(drill.snap) : e.keys;
       drill.t0 = now;
       drill.phase = 'active';
       if (e.sound === 'whistle') whistle(); else if (e.sound === 'drop') thud();
-      setHints(drillHints ? e.keys : null);
+      setHints(drillHints ? drill.keys : null);
       renderPanel();
     } else if (drill.phase === 'active') {
       if (e.check(sim, drill.snap)) finishEvent(true, now);
@@ -675,10 +449,10 @@
     var e = drill.events[drill.idx];
     if (!ok) e.fix(sim, drill.snap);
     drill.results.push({ ok: ok, ms: now - drill.t0, cue: e.cue, reaction: !!e.reaction });
-    drill.last = { ok: ok, e: e, ms: now - drill.t0 };
+    drill.last = { ok: ok, e: e, ms: now - drill.t0, keys: drill.keys };
     drill.phase = 'feedback';
     drill.until = now + (ok ? 900 : 3600);
-    setHints(ok ? null : e.keys);
+    setHints(ok ? null : drill.keys);
     renderPanel();
   }
   function updateDrillUI() {
@@ -714,7 +488,7 @@
       else if (drill.phase === 'feedback') h = drill.last.ok ? '<b class="lbl drop">Got it</b>' : '<b class="lbl">Out of time</b>The highlighted keys show what to press.';
       else { var e = drill.events[drill.idx]; h = '<b class="lbl ' + e.cls + '">' + e.cue + '</b>' + e.detail; }
     } else if (tab === 'free') {
-      var info = explain && explainKey && INFO[explainKey];
+      var info = explain && explainKey && CU.info[explainKey];
       h = info ? '<b class="lbl">' + info[0] + '</b>' + info[1] : explain ? 'Tap any key to see what it does.' : '<b class="lbl">Free play</b>Press anything. Options are below the console.';
     }
     nowbar.innerHTML = h + '<span class="nowcoach"></span>';
@@ -725,11 +499,12 @@
   function coachCell() {
     return '<div class="pcell coachcell"><p class="tip warn coach" id="coach">' + (sim.coach || '') + '</p></div>';
   }
+  function consoleTag() { return '<span class="badge">' + META.name + '</span>'; }
 
   function lessonPanel() {
     if (!lesson) {
       var count = LESSONS.filter(function (l) { return doneLessons[l.id]; }).length;
-      return '<div class="card"><div class="pcell"><div class="eyebrow">Lessons</div><h2>Learn one job at a time</h2>' +
+      return '<div class="card"><div class="pcell"><div class="row" style="justify-content:space-between"><span class="eyebrow">Lessons</span>' + consoleTag() + '</div><h2>Learn one job at a time</h2>' +
         '<p class="muted">Each lesson sets up a game situation and walks you through it. The keys to press are outlined in coral on the console, numbered in order. ' + count + ' of ' + LESSONS.length + ' done.</p></div>' +
         '<ol class="lesson-list">' + LESSONS.map(function (l, i) {
           return '<li><button type="button" data-open="' + i + '" class="' + (doneLessons[l.id] ? 'done' : '') + '"><span class="n">' + (doneLessons[l.id] ? '&#10003;' : i + 1) + '</span><span class="t">' + l.title + '<small>' + l.sub + '</small></span><span class="badge">' + l.steps.length + ' steps</span></button></li>';
@@ -757,7 +532,7 @@
 
   function drillPanel() {
     if (!drill) {
-      return '<div class="card"><div class="pcell"><div class="eyebrow">Practice</div><h2>Run a fake game</h2>' +
+      return '<div class="card"><div class="pcell"><div class="row" style="justify-content:space-between"><span class="eyebrow">Practice</span>' + consoleTag() + '</div><h2>Run a fake game</h2>' +
         '<p class="muted">Things happen on the ice and you react. Each task has a time limit. If you run out of time, the console shows you the keys and fixes the board so the game can go on.</p>' +
         '<label class="toggle" for="dhint-toggle"><input type="checkbox" id="dhint-toggle"' + (drillHints ? ' checked' : '') + '> Light up the keys (easier)</label></div>' +
         '<div class="drill-list">' + DRILLS.map(function (d, i) { return '<button type="button" data-drill="' + i + '"><b>' + d.title + '</b><span>' + d.sub + '</span></button>'; }).join('') + '</div>' +
@@ -784,7 +559,7 @@
     if (drill.phase === 'feedback' && drill.last) {
       fb = drill.last.ok
         ? '<div class="pcell feedback good"><b>Got it</b> ' + (drill.last.e.reaction ? (drill.last.ms / 1000).toFixed(2) + ' seconds' : 'in ' + (drill.last.ms / 1000).toFixed(1) + ' seconds') + '</div>'
-        : '<div class="pcell feedback miss"><b>Out of time.</b><span>The keys were: </span><span class="seq">' + chips(drill.last.e.keys.length ? drill.last.e.keys : []) + '</span><span>The board has been fixed so the game can continue.</span></div>';
+        : '<div class="pcell feedback miss"><b>Out of time.</b><span>The keys were: </span><span class="seq">' + chips(drill.last.keys || []) + '</span><span>The board has been fixed so the game can continue.</span></div>';
     }
     return '<div class="card"><div class="pcell"><div class="row" style="justify-content:space-between"><span class="eyebrow">' + d.title + '</span><span class="badge">' + Math.min(drill.idx + 1, total) + ' of ' + total + '</span></div></div>' +
       cue + fb + coachCell() + resultsList() +
@@ -798,8 +573,8 @@
   }
 
   function freePanel() {
-    var info = explainKey && INFO[explainKey];
-    return '<div class="card"><div class="pcell"><div class="eyebrow">Free play</div><h2>Try anything</h2>' +
+    var info = explainKey && CU.info[explainKey];
+    return '<div class="card"><div class="pcell"><div class="row" style="justify-content:space-between"><span class="eyebrow">Free play</span>' + consoleTag() + '</div><h2>Try anything</h2>' +
       '<p class="muted">No instructions, no timer. The board starts mid-game with a couple of penalties running. Press keys and see what happens.</p>' +
       '<label class="toggle" for="explain-toggle"><input type="checkbox" id="explain-toggle"' + (explain ? ' checked' : '') + '> Explain keys instead of pressing them</label></div>' +
       (explain ? '<div class="pcell explain">' + (info ? '<h3>' + info[0] + '</h3><p>' + info[1] + '</p>' : '<p class="muted">Tap any key or switch on the console to see what it does.</p>') + '</div>' : '') +
@@ -816,7 +591,7 @@
     if (a === 'lessons') { lesson = null; setHints(null); renderPanel(); }
     else if (a === 'drills' || a === 'stopdrill') { drill = null; setHints(null); E.setTimeIn(sim, false); renderPanel(); }
     else if (a === 'sample') { loadSample(); renderPanel(); }
-    else if (a === 'fresh') { sim = E.newGame(cfg); renderPanel(); }
+    else if (a === 'fresh') { sim = newGame(); renderPanel(); }
   });
   panel.addEventListener('change', function (e) {
     if (e.target.id === 'hint-toggle') { showHints = e.target.checked; save('hints', showHints); if (lesson && !lesson.finished) setHints(showHints ? val(lesson.def.steps[lesson.step].keys) : null); }
@@ -825,7 +600,7 @@
   });
 
   function loadSample() {
-    sim = E.newGame(cfg);
+    sim = newGame();
     midGame(sim, { period: 2, clock: Math.min(522, cfg.periodLen - 60), h: 3, v: 2, hs: 14, vs: 11 });
     E.addPenalty(sim, 'V', '7', cfg.minor * SEC); sim.V.pens[0].left = 64 * SEC;
     E.addPenalty(sim, 'H', '18', 300 * SEC); sim.H.pens[0].left = 211 * SEC;
@@ -833,55 +608,68 @@
 
   /* ---------- cheat sheet ---------- */
   function renderSheet() {
-    var mk = minorKey(), dbl = [mk, mk];
+    var sh = CU.sheet();
     function rows(list) { return '<table>' + list.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + seq(r[1]) + (r[2] ? '<div class="muted" style="font-size:13px;margin-top:4px">' + r[2] + '</div>' : '') + '</td></tr>'; }).join('') + '</table>'; }
+    function screenChip(text) {
+      var cls = sh.screen.style === 'led' ? 'ledchip' : 'lcdchip';
+      if (text.length > 16) return '<code class="' + cls + ' scroll"><span>' + text + '&nbsp;&nbsp;&nbsp;&nbsp;' + text + '</span></code>';
+      return '<code class="' + cls + '">' + (text + '                ').slice(0, 16) + '</code>';
+    }
     $('#sheet').innerHTML =
-      '<div class="sheet-head"><div class="eyebrow">Keep this open in the scorer\'s box</div><h1>Cheat sheet</h1>' +
-      '<p class="muted">Your rules: ' + fmt(cfg.periodLen) + ' periods, ' + minorStr() + ' minors (' + KL[mk][0] + ' key), 5:00 majors (+2 key). Blue keys are home, yellow keys are visitor. "Shift +" means hold SHIFT, then press the key. Take a screenshot to keep it on your phone.</p></div>' +
+      '<div class="sheet-head"><div class="eyebrow">Keep this open in the scorer\'s box</div><h1>Cheat sheet: ' + META.name + '</h1>' +
+      '<p class="muted">' + sh.intro + ' Take a screenshot to keep it on your phone. <a href="#console">Different console?</a></p></div>' +
       '<div class="sheet-grid boxgrid">' +
-      '<div class="sheet-card"><h2>Every whistle</h2>' + rows([
-        ['Puck drops', ['timein'], 'Switch ON. Clock runs.'],
-        ['Whistle', ['timein'], 'Switch OFF. Clock stops.'],
-        ['Horn by hand', ['horn'], 'Hold it down.']
-      ]) + '</div>' +
-      '<div class="sheet-card"><h2>Goals and shots</h2>' + rows([
-        ['Home goal', ['timein', 'hscore', 'plus1', 'hsog', 'plus1'], 'Clock off, goal, then shot.'],
-        ['Visitor goal', ['timein', 'vscore', 'plus1', 'vsog', 'plus1']],
-        ['Shot on goal (clock keeps running)', ['hsog', 'plus1']],
-        ['Take a goal away', ['hscore', 'minus1']],
-        ['Type an exact score', ['hscore', 'd3', 'enter'], 'Same for S.O.G. and PERIOD.'],
-        ['Never use for goals', ['hgoal'], 'Only switches the red light.']
-      ]) + '</div>' +
-      '<div class="sheet-card"><h2>Penalties</h2>' + rows([
-        ['Minor ' + minorStr() + ', Visitor #7', ['vpen', mk, 'd7', 'enter']],
-        ['Major 5:00, Home #4', ['hpen', 'plus2', 'd4', 'enter']],
-        ['Double minor, #12', ['vpen'].concat(dbl, ['d1', 'd2', 'enter']), 'Press the time key twice.'],
-        ['Power-play goal: clear #7', ['vpen', 'd7', 'enter', 'enter'], 'Minors only. Majors stay.'],
-        ['Change a penalty time', ['vpen', 'd7', 'enter', 'd1', 'd0', 'd0', 'enter'], 'Type the new time (100 = 1:00).'],
-        ['List all penalties', ['shift', 'vpen'], 'Press again to scroll.']
-      ]) + '</div>' +
-      '<div class="sheet-card"><h2>Clock and periods</h2>' + rows([
-        ['Next period', ['period', 'plus1']],
-        ['Set the clock to ' + fmt(cfg.periodLen), ['clockset'].concat(timeKeys(cfg.periodLen), ['enter']), 'TIME IN must be off.'],
-        ['Fix the clock (8:18)', ['clockset', 'd8', 'd1', 'd8', 'enter']],
-        ['...then keep penalty times', ['shift', 'd6'], 'Answers NO to CORR.PENALTY?'],
-        ['Home timeout', ['timein', 'htimeout', 'minus1']]
-      ]) + '</div>' +
-      '<div class="sheet-card"><h2>Start and oops</h2>' + rows([
-        ['New game (clears all)', ['shift', 'period', 'shift', 'd4']],
-        ['Typed a wrong digit', ['clr'], 'Before ENTER. After ENTER, just enter it again.'],
-        ['Stuck in a question', ['shift', 'clr'], 'ESC backs out.']
-      ]) + '</div>' +
-      '<div class="sheet-card"><h2>Screen messages</h2><p class="sheet-note">These show up on the small green screen above the number keys. Here they look the same as on the console.</p><table class="lcd-table">' +
-      [['HK', 'Hockey mode. BK means the break clock, OT overtime.'],
-       ['ENTER PLY.NO.', 'Type the player number, then ENTER.'],
-       ['NO PENALTY FOUND', 'ENTER was pressed before the number, or that player has no penalty. Start the penalty again.'],
-       ['CORR.PENALTY?Y/N', 'You changed the clock while penalties run. SHIFT + 6 (NO) keeps them.'],
-       ['NEW GAME? Y/N', 'SHIFT + 4 (YES) clears everything. SHIFT + 6 cancels.'],
-       ['T.O.D.CLOCK? Y/N', 'Time of day. SHIFT + 6 (NO) brings the game clock back.']
-      ].map(function (r) { return '<tr><td><code class="lcdchip">' + (r[0] + '                ').slice(0, 16) + '</code></td><td>' + r[1] + '</td></tr>'; }).join('') +
+      sh.cards.map(function (c) { return '<div class="sheet-card"><h2>' + c.title + '</h2>' + rows(c.rows) + '</div>'; }).join('') +
+      '<div class="sheet-card"><h2>Screen messages</h2><p class="sheet-note">' + sh.screen.note + '</p><table class="lcd-table">' +
+      sh.screen.list.map(function (r) { return '<tr><td>' + screenChip(r[0]) + '</td><td>' + r[1] + '</td></tr>'; }).join('') +
       '</table></div></div>' +
-      '<p class="fine">From the Fair-Play MP-70/50 Series User Guide (document 98-0002-29). Unofficial. Check against your rink\'s console before your first game.</p>';
+      '<p class="fine">' + sh.source + '</p>';
+  }
+
+  /* ---------- start page: console picker ---------- */
+  function renderStart() {
+    $('#picker').innerHTML = ORDER.map(function (id) {
+      var c = CONSOLES[id], on = id === consoleId;
+      return '<button type="button" class="pick' + (on ? ' on' : '') + '" data-console="' + id + '" aria-pressed="' + on + '">' +
+        '<span class="pick-maker">' + c.maker + '</span><b>' + c.name + '</b><span class="pick-look">' + c.lookFor + '</span>' +
+        '<span class="pick-state">' + (on ? 'Selected' : 'Use this console') + '</span></button>';
+    }).join('') +
+      '<div class="pick soon" aria-disabled="true"><span class="pick-maker">Daktronics</span><b>All Sport 5000</b><span class="pick-look">Coming next.</span><span class="pick-state">Not yet</span></div>';
+    $('#console-note').innerHTML = CU.startNote();
+    $('#routine').innerHTML = CU.routine.map(function (r) {
+      return '<section><h3>' + r[0] + '</h3><ol>' + r[1].map(function (item) {
+        return '<li>' + item.replace(/\[\[([^\]]+)\]\]/g, function (m, keys) { return seq(keys.split(' ')); }) + '</li>';
+      }).join('') + '</ol></section>';
+    }).join('');
+    $('#start-source').innerHTML = CU.sheet().source + ' The console screen text is copied from the manual where it shows it; other screens are close approximations. Your rink may have changed settings, so do one dry run on the real console before your first game.';
+    document.querySelectorAll('[data-console-name]').forEach(function (el) { el.textContent = META.name; });
+  }
+  $('#picker').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-console]');
+    if (b) { setConsole(b.dataset.console); renderStart(); }
+  });
+
+  function setConsole(id) {
+    if (!CONSOLES[id]) return;
+    consoleId = id;
+    META = CONSOLES[id];
+    save('console', id);
+    CU = META.make(ctx);
+    consoleEl.className = 'console console-' + id;
+    consoleEl.innerHTML = CU.html();
+    CU.mounted(consoleEl);
+    lcdEl = $('#lcd', consoleEl);
+    $('#console-tip').innerHTML = CU.consoleTip;
+    LESSONS = CU.lessons;
+    DRILLS = buildDrills();
+    var legacy = id === 'fairplay' ? load('done', {}) : {};
+    doneLessons = load('done.' + id, legacy);
+    lesson = null; drill = null; explain = false; explainKey = null;
+    sim = newGame();
+    B.Hname.textContent = META.teams.H; B.Vname.textContent = META.teams.V;
+    renderSheet();
+    renderPanel();
+    render();
   }
 
   /* ---------- setup form ---------- */
@@ -892,6 +680,7 @@
     cfg.periodLen = +setPeriod.value; cfg.minor = +setMinor.value; cfg.tenths = setTenths.value === '1';
     save('cfg', { periodLen: cfg.periodLen, minor: cfg.minor, tenths: cfg.tenths });
     sim.cfg = cfg;
+    DRILLS = buildDrills();
     renderSheet();
   });
   $('#setup-form').addEventListener('submit', function (e) { e.preventDefault(); });
@@ -899,6 +688,9 @@
   /* ---------- tabs ---------- */
   var TABS = ['start', 'lessons', 'drills', 'free', 'cheat'];
   function go(t) {
+    if (CONSOLES[t]) { setConsole(t); renderStart(); t = 'start'; }
+    var jump = t === 'console';
+    if (jump) t = 'start';
     if (TABS.indexOf(t) < 0) t = 'start';
     var prev = tab;
     tab = t;
@@ -909,14 +701,14 @@
     if (prev === 'drills' && t !== 'drills') { drill = null; }
     if (t !== 'free') { explain = false; consoleEl.classList.remove('explaining'); }
     setHints(null);
-    if (t === 'lessons') { if (lesson) { if (!lesson.finished) setHints(showHints ? val(lesson.def.steps[lesson.step].keys) : null); } else sim = E.newGame(cfg); }
-    if (t === 'drills' && !drill) sim = E.newGame(cfg);
+    if (t === 'lessons') { if (lesson) { if (!lesson.finished) setHints(showHints ? val(lesson.def.steps[lesson.step].keys) : null); } else sim = newGame(); }
+    if (t === 'drills' && !drill) sim = newGame();
     if (t === 'free' && prev !== 'free') { loadSample(); lesson = null; }
     if (t === 'cheat') renderSheet();
     hornStop();
     renderPanel();
     render();
-    window.scrollTo(0, 0);
+    if (jump) $('#console-section').scrollIntoView(); else window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', function () { go(location.hash.slice(1)); });
 
@@ -934,7 +726,8 @@
     }
   }
 
-  renderSheet();
+  setConsole(consoleId);
+  renderStart();
   go(location.hash.slice(1) || 'start');
   setInterval(frame, 50);
 })();

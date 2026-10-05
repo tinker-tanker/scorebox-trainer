@@ -30,7 +30,7 @@ ${body}
 `;
 fs.writeFileSync(path.join(out, 'index.html'), page);
 
-for (const file of ['engine.js', 'app.js']) {
+for (const file of fs.readdirSync(src).filter((f) => f.endsWith('.js'))) {
   fs.copyFileSync(path.join(src, file), path.join(out, file));
 }
 fs.writeFileSync(path.join(out, '.nojekyll'), '');

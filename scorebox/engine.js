@@ -1,4 +1,8 @@
-/* Fair-Play MP-70/50 hockey console emulator.
+/* Scoreboard trainer engine: the shared hockey game core (clock, scores, penalty clocks,
+   scoreboard output) plus the Fair-Play MP-70/50 console. Other consoles register their own
+   press()/lcd() in Engine.consoles and reuse the core helpers exported below.
+
+   Fair-Play MP-70/50 hockey console emulator.
    Behaviour follows the MP-70/50 Series User Guide (doc 98-0002-29), hockey chapter
    and Common Functions chapter. LCD wording follows the manual where it gives it;
    other screens are close approximations. All times are in milliseconds. */
@@ -29,9 +33,12 @@
     return { score: 0, sog: 0, tol: cfg.tols, goalMs: 0, goalManual: false, pens: [], history: [] };
   }
 
-  function newGame(cfg) {
+  function newGame(cfg, consoleId) {
     cfg = Object.assign(defaultSettings(), cfg || {});
     return {
+      console: consoleId || 'fairplay',
+      power: true,
+      penPaused: false,
       cfg: cfg,
       clock: cfg.periodLen * SEC,
       timeIn: false,
@@ -129,7 +136,7 @@
   var PLUS = { plus1: 1, plus2: 2, plus3: 3, minus1: -1 };
   var MAXLEN = { score: 2, sog: 2, period: 1, clockset: 4, pen: 2, penedit: 4, corredit: 4, inttime: 4 };
 
-  function press(s, key) {
+  function fpPress(s, key) {
     s.coach = '';
     if (key === 'shift') { s.shift = !s.shift; return; }
     var shifted = s.shift;
@@ -164,7 +171,7 @@
       case 'period': // NEW GAME
         yesno(s, 'NEW GAME? Y/N', function () {
           var keepSwitch = s.timeIn, keepAuto = s.autoHorn;
-          Object.assign(s, newGame(s.cfg));
+          Object.assign(s, newGame(s.cfg, s.console));
           s.timeIn = keepSwitch; s.autoHorn = keepAuto;
           s.msg = 'NEW GAME';
         });
@@ -347,6 +354,7 @@
 
   function tick(s, dt) {
     if (s.hornMs > 0) s.hornMs = Math.max(0, s.hornMs - dt);
+    if (s.msgMs > 0) { s.msgMs -= dt; if (s.msgMs <= 0) { s.msgMs = 0; s.msg = ''; } }
     if (s.timeIn) {
       var used = 0;
       if (s.countDown) {
@@ -358,7 +366,7 @@
       } else { s.clock += dt; used = dt; }
 
       if (used > 0) {
-        if (s.periodType !== 'break') ['H', 'V'].forEach(function (T) {
+        if (s.periodType !== 'break' && !s.penPaused) ['H', 'V'].forEach(function (T) {
           var team = s[T];
           activePens(s, T).forEach(function (p) { p.left -= used; });
           team.pens = team.pens.filter(function (p) { return p.left > 0; });
@@ -388,7 +396,7 @@
     return (new Array(padL + 1).join(' ') + t).slice(0, 16);
   }
 
-  function lcd(s) {
+  function fpLcd(s) {
     var code = s.periodType === 'break' ? 'BK' : s.periodType === 'ot' ? 'OT' : 'HK';
     var l1;
     if (s.tod) l1 = line('HK  TOD', clockStr(s));
@@ -453,10 +461,17 @@
     };
   }
 
+  /* ---------- console registry ---------- */
+
+  var consoles = { fairplay: { press: fpPress, lcd: fpLcd } };
+  function press(s, key) { return consoles[s.console || 'fairplay'].press(s, key); }
+  function lcd(s) { return consoles[s.console || 'fairplay'].lcd(s); }
+
   var api = {
     SEC: SEC, defaultSettings: defaultSettings, newGame: newGame, press: press, tick: tick,
     setTimeIn: setTimeIn, hornDown: hornDown, hornUp: hornUp, lcd: lcd, board: board,
-    fmt: fmt, entryMs: entryMs, addPenalty: addPenalty, findPen: findPen, activePens: activePens, other: other
+    fmt: fmt, entryMs: entryMs, addPenalty: addPenalty, findPen: findPen, activePens: activePens, other: other,
+    consoles: consoles, yesno: yesno, line: line, center: center, pad2: pad2, clockStr: clockStr
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Engine = api;
