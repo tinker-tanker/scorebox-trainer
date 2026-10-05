@@ -705,13 +705,13 @@
     var h = '';
     if (tab === 'lessons') {
       if (!lesson) h = 'Pick a lesson below the console.';
-      else if (lesson.finished) h = '<b class="lbl">Lesson done</b>See below the console for what is next.';
+      else if (lesson.finished) h = '<b class="lbl drop">Lesson done</b>See below the console for what is next.';
       else h = '<b class="lbl">Step ' + (lesson.step + 1) + ' of ' + lesson.def.steps.length + '</b>' + val(lesson.def.steps[lesson.step].t);
     } else if (tab === 'drills') {
       if (!drill) h = 'Pick a drill below the console.';
       else if (drill.phase === 'done') h = '<b class="lbl">Final buzzer</b>Your results are below the console.';
       else if (drill.phase === 'wait') h = '<b class="lbl">' + (sim.timeIn ? 'Play on...' : 'Stoppage...') + '</b>Watch for the next call.';
-      else if (drill.phase === 'feedback') h = drill.last.ok ? '<b class="lbl">Got it</b>' : '<b class="lbl">Out of time</b>The orange keys show what to press.';
+      else if (drill.phase === 'feedback') h = drill.last.ok ? '<b class="lbl drop">Got it</b>' : '<b class="lbl">Out of time</b>The highlighted keys show what to press.';
       else { var e = drill.events[drill.idx]; h = '<b class="lbl ' + e.cls + '">' + e.cue + '</b>' + e.detail; }
     } else if (tab === 'free') {
       var info = explain && explainKey && INFO[explainKey];
@@ -724,7 +724,7 @@
     if (!lesson) {
       var count = LESSONS.filter(function (l) { return doneLessons[l.id]; }).length;
       return '<div class="card"><div class="eyebrow">Lessons</div><h2>Learn one job at a time</h2>' +
-        '<p class="muted">Each lesson sets up a game situation and walks you through it. Keys to press light up in orange on the console, numbered in order. ' + count + ' of ' + LESSONS.length + ' done.</p>' +
+        '<p class="muted">Each lesson sets up a game situation and walks you through it. The keys to press are outlined in coral on the console, numbered in order. ' + count + ' of ' + LESSONS.length + ' done.</p>' +
         '<ol class="lesson-list">' + LESSONS.map(function (l, i) {
           return '<li><button type="button" data-open="' + i + '" class="' + (doneLessons[l.id] ? 'done' : '') + '"><span class="n">' + (doneLessons[l.id] ? '&#10003;' : i + 1) + '</span><span class="t">' + l.title + '<small>' + l.sub + '</small></span><span class="badge">' + l.steps.length + ' steps</span></button></li>';
         }).join('') + '</ol></div>';
