@@ -872,14 +872,14 @@
         ['Typed a wrong digit', ['clr'], 'Before ENTER. After ENTER, just enter it again.'],
         ['Stuck in a question', ['shift', 'clr'], 'ESC backs out.']
       ]) + '</div>' +
-      '<div class="sheet-card"><h2>Screen messages</h2><table>' +
+      '<div class="sheet-card"><h2>Screen messages</h2><p class="sheet-note">These show up on the small green screen above the number keys. Here they look the same as on the console.</p><table class="lcd-table">' +
       [['HK', 'Hockey mode. BK means the break clock, OT overtime.'],
        ['ENTER PLY.NO.', 'Type the player number, then ENTER.'],
        ['NO PENALTY FOUND', 'ENTER was pressed before the number, or that player has no penalty. Start the penalty again.'],
        ['CORR.PENALTY?Y/N', 'You changed the clock while penalties run. SHIFT + 6 (NO) keeps them.'],
        ['NEW GAME? Y/N', 'SHIFT + 4 (YES) clears everything. SHIFT + 6 cancels.'],
        ['T.O.D.CLOCK? Y/N', 'Time of day. SHIFT + 6 (NO) brings the game clock back.']
-      ].map(function (r) { return '<tr><td><code style="font-family:var(--f-lcd);font-size:19px">' + r[0] + '</code></td><td>' + r[1] + '</td></tr>'; }).join('') +
+      ].map(function (r) { return '<tr><td><code class="lcdchip">' + (r[0] + '                ').slice(0, 16) + '</code></td><td>' + r[1] + '</td></tr>'; }).join('') +
       '</table></div></div>' +
       '<p class="fine">From the Fair-Play MP-70/50 Series User Guide (document 98-0002-29). Unofficial. Check against your rink\'s console before your first game.</p>';
   }

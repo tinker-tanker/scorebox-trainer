@@ -367,6 +367,12 @@ kbd.k.switch { background: #1b1c1f; color: #fff; }
 .sheet-card tr:first-child td { border-top: 0; }
 .sheet-card td:first-child { padding-right: 14px; width: 42%; font-weight: 600; }
 .seq { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.sheet-note { font-size: 13px; color: var(--muted); }
+/* screen messages drawn like the console display: green LCD in a dark bezel */
+.lcdchip { display: inline-block; font-family: var(--f-lcd); font-size: 19px; line-height: 1; letter-spacing: .02em; white-space: pre; color: var(--lcd-ink); background: var(--lcd-bg); padding: 5px 8px 4px; border-radius: 3px; box-shadow: 0 0 0 4px #111, inset 0 0 6px rgba(0,0,0,.3); margin: 4px; }
+.lcd-table td:first-child { width: 48%; }
+.lcd-table td { vertical-align: middle; }
+@media (max-width: 480px) { .lcd-table td { display: block; width: auto !important; } .lcd-table td:first-child { padding-bottom: 2px; } .lcd-table td + td { border-top: 0; padding-top: 4px; } }
 .seq .then { color: var(--muted); font-size: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
