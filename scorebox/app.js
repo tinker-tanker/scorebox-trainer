@@ -626,16 +626,15 @@
       '<p class="fine">' + sh.source + '</p>';
   }
 
-  /* ---------- start page: console picker ---------- */
+  /* ---------- home page: the consoles overview ---------- */
   function renderStart() {
     $('#picker').innerHTML = ORDER.map(function (id) {
       var c = CONSOLES[id], on = id === consoleId;
-      return '<button type="button" class="pick' + (on ? ' on' : '') + '" data-console="' + id + '" aria-pressed="' + on + '">' +
+      return '<button type="button" class="pick' + (on ? ' on' : '') + '" data-console="' + id + '">' +
         '<span class="pick-maker">' + c.maker + '</span><b>' + c.name + '</b><span class="pick-look">' + c.lookFor + '</span>' +
-        '<span class="pick-state">' + (on ? 'Selected' : 'Use this console') + '</span></button>';
+        '<span class="pick-state">' + (on ? 'Your console: start lessons' : 'Start its lessons') + '</span></button>';
     }).join('') +
       '<div class="pick soon" aria-disabled="true"><span class="pick-maker">Daktronics</span><b>All Sport 5000</b><span class="pick-look">Coming next.</span><span class="pick-state">Not yet</span></div>';
-    $('#console-note').innerHTML = CU.startNote();
     $('#routine').innerHTML = CU.routine.map(function (r) {
       return '<section><h3>' + r[0] + '</h3><ol>' + r[1].map(function (item) {
         return '<li>' + item.replace(/\[\[([^\]]+)\]\]/g, function (m, keys) { return seq(keys.split(' ')); }) + '</li>';
@@ -646,7 +645,26 @@
   }
   $('#picker').addEventListener('click', function (e) {
     var b = e.target.closest('[data-console]');
-    if (b) { setConsole(b.dataset.console); renderStart(); }
+    if (!b) return;
+    setConsole(b.dataset.console);
+    renderStart();
+    if (location.hash === '#lessons') go('lessons'); else location.hash = 'lessons';
+  });
+
+  /* ---------- setup bar (lessons, practice, free play, cheat sheet): console + league rules ---------- */
+  function renderSetup() {
+    $('#console-switch').innerHTML = ORDER.map(function (id) {
+      return '<button type="button" data-switch="' + id + '" aria-pressed="' + (id === consoleId) + '">' + CONSOLES[id].name + '</button>';
+    }).join('') + '<span class="soon">Daktronics coming</span>';
+    $('#console-note').innerHTML = CU.startNote();
+  }
+  $('#console-switch').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-switch]');
+    if (!b || b.dataset.switch === consoleId) return;
+    setConsole(b.dataset.switch);
+    if (tab === 'free') loadSample();
+    renderStart();
+    render();
   });
 
   function setConsole(id) {
@@ -667,6 +685,7 @@
     lesson = null; drill = null; explain = false; explainKey = null;
     sim = newGame();
     B.Hname.textContent = META.teams.H; B.Vname.textContent = META.teams.V;
+    renderSetup();
     renderSheet();
     renderPanel();
     render();
@@ -688,9 +707,9 @@
   /* ---------- tabs ---------- */
   var TABS = ['start', 'lessons', 'drills', 'free', 'cheat'];
   function go(t) {
-    if (CONSOLES[t]) { setConsole(t); renderStart(); t = 'start'; }
-    var jump = t === 'console';
-    if (jump) t = 'start';
+    if (CONSOLES[t]) { setConsole(t); renderStart(); t = 'lessons'; }
+    var jump = t === 'console';                       // header link: show the setup bar
+    if (jump) t = ['lessons', 'drills', 'free', 'cheat'].indexOf(tab) >= 0 ? tab : 'lessons';
     if (TABS.indexOf(t) < 0) t = 'start';
     var prev = tab;
     tab = t;
@@ -698,6 +717,7 @@
     $('#view-start').hidden = t !== 'start';
     $('#view-cheat').hidden = t !== 'cheat';
     $('#view-trainer').hidden = ['lessons', 'drills', 'free'].indexOf(t) < 0;
+    $('#setup-form').hidden = t === 'start';
     if (prev === 'drills' && t !== 'drills') { drill = null; }
     if (t !== 'free') { explain = false; consoleEl.classList.remove('explaining'); }
     setHints(null);
@@ -708,7 +728,8 @@
     hornStop();
     renderPanel();
     render();
-    if (jump) $('#console-section').scrollIntoView(); else window.scrollTo(0, 0);
+    window.scrollTo(0, 0);
+    if (jump) $('#console-switch').querySelector('[aria-pressed="true"]').focus();
   }
   window.addEventListener('hashchange', function () { go(location.hash.slice(1)); });
 

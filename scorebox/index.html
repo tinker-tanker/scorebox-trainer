@@ -355,6 +355,23 @@ kbd.k.switch { background: #1b1c1f; color: #fff; }
 .mobile-led { display: none; align-items: center; gap: 1.5cqw; font-family: var(--f-key); font-size: 3.2cqw; color: #f5f5f5; font-weight: 600; }
 .mobile-led .led { width: 3cqw; height: 3cqw; }
 
+/* ---------- setup bar: console + league rules, one connected grid above the trainer pages ---------- */
+.setupbar { grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); margin-bottom: 32px; }
+.sb-cell { display: grid; gap: 8px; align-content: start; padding: 18px 22px; min-width: 0; }
+.sb-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+.sb-cell select { font: inherit; font-size: 14px; font-weight: 600; padding: 4px 0 6px; border: 0; border-bottom: 1.5px solid var(--rule-strong); border-radius: 0; background: transparent; color: var(--foreground); }
+.sb-cell select:focus { border-bottom-color: var(--foreground); outline: none; }
+.sb-switch { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; }
+.sb-switch button { position: relative; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); background: none; border: 0; padding: 2px 0; cursor: pointer; }
+.sb-switch button:hover { color: var(--foreground); }
+.sb-switch button[aria-pressed="true"] { color: var(--foreground); font-weight: 800; background: var(--hl); padding-inline: .15em; margin-inline: -.15em; }
+.sb-switch .soon { font-size: 13px; color: var(--muted-2); }
+.sb-note { display: block; grid-column: 1 / -1; font-size: 13px; color: var(--muted); padding-block: 14px; }
+.sb-note b { color: var(--foreground); }
+@media (pointer: coarse) { .sb-switch button::before { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); } }
+@media (max-width: 860px) { .setupbar { grid-template-columns: repeat(3, minmax(0, 1fr)); } .sb-console { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .setupbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sb-console, .setupbar > .sb-cell:nth-child(4) { grid-column: 1 / -1; } .sb-cell { padding: 14px 16px; } }
+
 /* ---------- console picker ---------- */
 .picker { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .picker > .pick { border: 0; border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); }
@@ -502,6 +519,17 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
 </header>
 
 <main class="wrap">
+  <form class="setupbar boxgrid" id="setup-form" aria-label="Console and league rules" hidden>
+    <div class="sb-cell sb-console"><span class="sb-label">Console</span><div class="sb-switch" id="console-switch" role="group" aria-label="Console"></div></div>
+    <label class="sb-cell" for="set-period"><span class="sb-label">Period length</span>
+      <select id="set-period"><option value="600">10:00</option><option value="720">12:00</option><option value="780">13:00</option><option value="900">15:00</option><option value="1020">17:00</option><option value="1200">20:00</option></select></label>
+    <label class="sb-cell" for="set-minor"><span class="sb-label">Minor penalty</span>
+      <select id="set-minor"><option value="90">1:30</option><option value="120">2:00</option></select></label>
+    <label class="sb-cell" for="set-tenths"><span class="sb-label">Last minute shows tenths</span>
+      <select id="set-tenths"><option value="1">Yes (59.9, 59.8...)</option><option value="0">No (0:59, 0:58...)</option></select></label>
+    <p class="sb-cell sb-note" id="console-note"></p>
+  </form>
+
   <!-- START -->
   <section class="view" id="view-start">
     <div class="hero-grid boxgrid">
@@ -520,10 +548,9 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
     </div>
 
     <div class="section" id="console-section">
-      <h2>Which console is in your scorer's box?</h2>
-      <p class="muted">Every lesson, drill and the cheat sheet follow the console you pick. Look for the maker's name on the console itself.</p>
+      <h2>Consoles</h2>
+      <p class="muted">Every lesson, drill and the cheat sheet follow your rink's console. Pick one to start its lessons, or switch at the top of the Lessons, Practice and Free play pages. More consoles are on the way.</p>
       <div class="picker boxgrid" id="picker"></div>
-      <p class="tip" id="console-note"></p>
     </div>
 
     <div class="section">
@@ -539,29 +566,8 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
     </div>
 
     <div class="section">
-      <h2>Your league's rules</h2>
-      <p class="muted">Every lesson, drill and the cheat sheet use these. Check your game sheet or ask the coach if you're not sure.</p>
-      <form class="setup boxgrid" id="setup-form">
-        <label for="set-period">Period length
-          <select id="set-period">
-            <option value="600">10:00</option><option value="720">12:00</option><option value="780">13:00</option>
-            <option value="900">15:00</option><option value="1020">17:00</option><option value="1200">20:00</option>
-          </select>
-          <small>The time you set at the start of each period.</small>
-        </label>
-        <label for="set-minor">Minor penalty length
-          <select id="set-minor"><option value="90">1:30</option><option value="120">2:00</option></select>
-          <small>Many youth games use 1:30. Older age groups use 2:00.</small>
-        </label>
-        <label for="set-tenths">Last minute shows tenths
-          <select id="set-tenths"><option value="1">Yes (59.9, 59.8...)</option><option value="0">No (0:59, 0:58...)</option></select>
-          <small>Match what your rink's board does.</small>
-        </label>
-      </form>
-    </div>
-
-    <div class="section">
       <h2>Your game-day routine</h2>
+      <p class="muted">For the <span data-console-name>Fair-Play MP-70</span>. Switch consoles at the top of the Lessons page.</p>
       <div class="routine boxgrid" id="routine"></div>
       <p class="fine" id="start-source"></p>
     </div>

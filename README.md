@@ -10,13 +10,14 @@ A practice web app for hockey parents learning to run the scoreboard console in 
 
 **What's in it** (for each console):
 
-- **Start here**: pick your console, hockey timing basics, league settings (period length, 1:30 or 2:00 minors), game-day routine
+- **Start here**: an overview: what's inside, the consoles we support, hockey timing basics, the game-day routine
+- **Setup bar** (top of Lessons, Practice, Free play and the Cheat sheet): switch console and set your league's rules (period length, 1:30 or 2:00 minors, tenths in the last minute)
 - **Lessons**: 13 guided lessons; the keys to press light up on the console in order
 - **Practice**: timed drills (whistle and faceoff reaction, a full period, penalty trouble, fix the board)
 - **Free play**: a mid-game board to experiment on, with an "explain keys" mode
 - **Cheat sheet**: every common task as a key sequence, plus what the console's screen messages mean
 
-**Use it:** https://trainer.kiwistats.com (link straight to a console with `#fairplay` or `#nevco`)
+**Use it:** https://trainer.kiwistats.com (`#fairplay` or `#nevco` opens that console's lessons)
 
 Also published as a Claude artifact: https://claude.ai/artifact/8j21QRvwECDfJV5tskGBGu
 
