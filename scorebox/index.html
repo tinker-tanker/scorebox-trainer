@@ -81,6 +81,11 @@ main { padding-block: 56px 32px; }
 .foot { border-top: 1px solid var(--rule); margin-top: 32px; padding-block: 28px 0; }
 .foot .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; font-size: 12px; color: var(--muted); }
 .foot a { font-weight: 700; color: var(--foreground); }
+.foot-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
+/* the address is the link text, so it can be read or copied even where mail links do nothing */
+.foot .contact { position: relative; padding: 5px 12px; border: 1px solid var(--grid); text-decoration: none; user-select: all; }
+.foot .contact:hover { background: var(--wash); }
+@media (pointer: coarse) { .foot .contact::before { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); } }
 
 /* ---------- shared bits ---------- */
 .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--muted); }
@@ -593,7 +598,7 @@ kbd.k.nv { background: #f3f3ef; color: #111; border: 1px solid #c9cbbe; box-shad
 <footer class="foot">
   <div class="wrap">
     <span>Scorebox Trainer is a free practice tool from KiwiStats. Not affiliated with any scoreboard maker.</span>
-    <span>Tracking your team's stats? <a href="https://kiwistats.com" target="_blank" rel="noopener">Try KiwiStats</a></span>
+    <span class="foot-links"><a class="contact" href="mailto:hey@kiwistats.com">Contact: hey@kiwistats.com</a><span>Tracking your team's stats? <a href="https://kiwistats.com" target="_blank" rel="noopener">Try KiwiStats</a></span></span>
   </div>
 </footer>
 
